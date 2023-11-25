@@ -1,49 +1,64 @@
 `timescale 1ns / 1ps
 module lab4_tb;
+  logic [31:0] test_error_round;  // 数据错误轮次
+  logic [31:0] test_error_addr;  // 数据错误地址
+  logic [31:0] test_error_read_data;  // 错误地址读出的数�?
+  logic [31:0] test_error_expected_data;  // 错误地址预期的数�?
+  logic [31:0] data_expected;
+
+  logic wbs0_cyc_o;
+  logic wbs0_stb_o;
+  logic wbs0_ack_i;
+  logic [31:0] wbs0_adr_o;
+  logic [31:0] wbs0_dat_o;
+  logic [31:0] wbs0_dat_i;
+  logic [3:0] wbs0_sel_o;
+  logic wbs0_we_o;
+
 
   wire clk_50M, clk_11M0592;
 
-  reg push_btn;   // BTN5 按钮开关，带消抖电路，按下时为 1
-  reg reset_btn;  // BTN6 复位按钮，带消抖电路，按下时为 1
+  reg push_btn;   // BTN5 按钮�?关，带消抖电路，按下时为 1
+  reg reset_btn;  // BTN6 复位按钮，带消抖电路，按下时�? 1
 
   reg [3:0] touch_btn; // BTN1~BTN4，按钮开关，按下时为 1
-  reg [31:0] dip_sw;   // 32 位拨码开关，拨到“ON”时为 1
+  reg [31:0] dip_sw;   // 32 位拨码开关，拨到“ON”时�? 1
 
-  wire [15:0] leds;  // 16 位 LED，输出时 1 点亮
+  wire [15:0] leds;  // 16 �? LED，输出时 1 点亮
   wire [7:0] dpy0;   // 数码管低位信号，包括小数点，输出 1 点亮
   wire [7:0] dpy1;   // 数码管高位信号，包括小数点，输出 1 点亮
 
-  wire [31:0] base_ram_data;  // BaseRAM 数据，低 8 位与 CPLD 串口控制器共享
+  wire [31:0] base_ram_data;  // BaseRAM 数据，低 8 位与 CPLD 串口控制器共�?
   wire [19:0] base_ram_addr;  // BaseRAM 地址
-  wire[3:0] base_ram_be_n;    // BaseRAM 字节使能，低有效。如果不使用字节使能，请保持为 0
-  wire base_ram_ce_n;  // BaseRAM 片选，低有效
-  wire base_ram_oe_n;  // BaseRAM 读使能，低有效
-  wire base_ram_we_n;  // BaseRAM 写使能，低有效
+  wire[3:0] base_ram_be_n;    // BaseRAM 字节使能，低有效。如果不使用字节使能，请保持�? 0
+  wire base_ram_ce_n;  // BaseRAM 片�?�，低有�?
+  wire base_ram_oe_n;  // BaseRAM 读使能，低有�?
+  wire base_ram_we_n;  // BaseRAM 写使能，低有�?
 
   wire [31:0] ext_ram_data;  // ExtRAM 数据
   wire [19:0] ext_ram_addr;  // ExtRAM 地址
-  wire[3:0] ext_ram_be_n;    // ExtRAM 字节使能，低有效。如果不使用字节使能，请保持为 0
-  wire ext_ram_ce_n;  // ExtRAM 片选，低有效
-  wire ext_ram_oe_n;  // ExtRAM 读使能，低有效
-  wire ext_ram_we_n;  // ExtRAM 写使能，低有效
+  wire[3:0] ext_ram_be_n;    // ExtRAM 字节使能，低有效。如果不使用字节使能，请保持�? 0
+  wire ext_ram_ce_n;  // ExtRAM 片�?�，低有�?
+  wire ext_ram_oe_n;  // ExtRAM 读使能，低有�?
+  wire ext_ram_we_n;  // ExtRAM 写使能，低有�?
 
-  wire txd;  // 直连串口发送端
-  wire rxd;  // 直连串口接收端
+  wire txd;  // 直连串口发�?�端
+  wire rxd;  // 直连串口接收�?
 
   // CPLD 串口
-  wire uart_rdn;  // 读串口信号，低有效
-  wire uart_wrn;  // 写串口信号，低有效
-  wire uart_dataready;  // 串口数据准备好
-  wire uart_tbre;  // 发送数据标志
-  wire uart_tsre;  // 数据发送完毕标志
+  wire uart_rdn;  // 读串口信号，低有�?
+  wire uart_wrn;  // 写串口信号，低有�?
+  wire uart_dataready;  // 串口数据准备�?
+  wire uart_tbre;  // 发�?�数据标�?
+  wire uart_tsre;  // 数据发�?�完毕标�?
 
-  // Windows 需要注意路径分隔符的转义，例如 "D:\\foo\\bar.bin"
-  parameter BASE_RAM_INIT_FILE = "/tmp/main.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
-  parameter EXT_RAM_INIT_FILE = "/tmp/eram.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路径
+  // Windows �?要注意路径分隔符的转义，例如 "D:\\foo\\bar.bin"
+  parameter BASE_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\main.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路�?
+  parameter EXT_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\eram.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路�?
 
   initial begin
     // 在这里可以自定义测试输入序列，例如：
-    dip_sw = 32'h2;
+    dip_sw = 32'h1;
     touch_btn = 0;
     reset_btn = 0;
     push_btn = 0;
@@ -55,14 +70,14 @@ module lab4_tb;
 
     #1000; // 等待复位结束
 
-    // 按下按钮，开始 SRAM Tester 的测试
+    // 按下按钮，开�? SRAM Tester 的测�?
     push_btn = 1;
 
-    // 等待一段时间，结束仿真
-    #10000 $finish;
+    // 等待�?段时间，结束仿真
+    #1000000 $finish;
   end
 
-  // 待测试用户设计
+  // 待测试用户设�?
   lab4_top dut (
       .clk_50M(clk_50M),
       .clk_11M0592(clk_11M0592),
@@ -102,7 +117,23 @@ module lab4_tb;
       .flash_we_n()
   );
 
-  // 时钟源
+  assign test_error_round = dut.test_error_round;  // 数据错误轮次
+  assign test_error_addr = dut.test_error_addr;  // 数据错误地址
+  assign test_error_read_data = dut.test_error_read_data;  // 错误地址读出的数�?
+  assign test_error_expected_data = dut.test_error_expected_data;  // 错误地址预期的数�?
+  assign data_expected = dut.u_sram_tester.data_expected;
+
+  assign wbs0_cyc_o = dut.wbs0_cyc_o;
+  assign wbs0_stb_o = dut.wbs0_stb_o;
+  assign wbs0_ack_i = dut.wbs0_ack_i;
+  assign wbs0_adr_o = dut.wbs0_adr_o;
+  assign wbs0_dat_o = dut.wbs0_dat_o;
+  assign wbs0_dat_i = dut.wbs0_dat_i;
+  assign wbs0_sel_o = dut.wbs0_sel_o;
+  assign wbs0_we_o  = dut.wbs0_we_o;
+
+
+  // 时钟�?
   clock osc (
       .clk_11M0592(clk_11M0592),
       .clk_50M    (clk_50M)
@@ -162,7 +193,7 @@ module lab4_tb;
       .UB_n(ext_ram_be_n[3])
   );
 
-  // 从文件加载 BaseRAM
+  // 从文件加�? BaseRAM
   initial begin
     reg [31:0] tmp_array[0:1048575];
     integer n_File_ID, n_Init_Size;
@@ -184,7 +215,7 @@ module lab4_tb;
     end
   end
 
-  // 从文件加载 ExtRAM
+  // 从文件加�? ExtRAM
   initial begin
     reg [31:0] tmp_array[0:1048575];
     integer n_File_ID, n_Init_Size;

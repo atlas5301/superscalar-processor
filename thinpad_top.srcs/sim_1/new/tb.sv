@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+`timescale 10ns / 1ns
 module tb;
 
   wire clk_50M, clk_11M0592;
@@ -46,9 +46,9 @@ module tb;
   wire uart_tsre;  // 数据发送完毕标志
 
   // Windows 需要注意路径分隔符的转义，例如 "D:\\foo\\bar.bin"
-  parameter BASE_RAM_INIT_FILE = "/tmp/main.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
-  parameter EXT_RAM_INIT_FILE = "/tmp/eram.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路径
-  parameter FLASH_INIT_FILE = "/tmp/kernel.elf";  // Flash 初始化文件，请修改为实际的绝对路径
+  parameter BASE_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\test.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
+  parameter EXT_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\test.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路径
+  parameter FLASH_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\sum.elf";  // Flash 初始化文件，请修改为实际的绝对路径
 
   initial begin
     // 在这里可以自定义测试输入序列，例如：
@@ -57,7 +57,7 @@ module tb;
     reset_btn = 0;
     push_btn = 0;
 
-    #100;
+    #1000;
     reset_btn = 1;
     #100;
     reset_btn = 0;
@@ -113,6 +113,91 @@ module tb;
       .flash_byte_n(flash_byte_n),
       .flash_we_n(flash_we_n)
   );
+
+  reg [31:0] result_DEBUG;
+  reg [31:0] sel_MEM_DEBUG;
+  assign result_DEBUG = dut.mem_module_pipeline_inst.result_DEBUG;
+  assign sel_MEM_DEBUG = dut.mem_module_pipeline_inst.sel_MEM_DEBUG;
+
+  reg [31:0] debug_PC_WB;
+  assign debug_PC_WB = dut.wb_module_pipeline_inst.debug_PC;
+
+  reg [31:0] debug_PC_EXE;
+  assign debug_PC_EXE = dut.exe_module_pipeline_inst.debug_PC;
+
+  reg [31:0] debug_PC_IF;
+  assign debug_PC_IF = dut.if_module_pipeline_inst.debug_PC;
+  reg [3:0] debug_entry;
+  assign debug_entry = dut.if_module_pipeline_inst.debug_entry;
+
+  reg [0:0][4:0] wr_addr;
+  reg [0:0][31:0] wr_data;
+  reg [0:0] wr_en;
+
+  assign wr_addr = dut.wr_addr;
+  assign wr_data = dut.wr_data;
+  assign wr_en = dut.wr_en;
+
+  logic [1:0][4:0] rd_addr;
+  logic [1:0][31:0] rd_data;
+
+  assign rd_addr = dut.rd_addr;
+  assign rd_data = dut.rd_data;
+
+  logic [31:0] registers [0:31];
+  assign registers = dut.register_file_pipeline_inst.registers;
+
+  logic [3:0] test_head;
+  assign test_head = dut.next_head;
+
+  logic [1:0] state_MEM;
+  assign state_MEM = dut.mem_module_pipeline_inst.state_MEM;
+
+  logic [15:0][31:0] test_PC;
+  // logic [15:0][31:0] next_PC;
+  assign test_PC = dut.ReorderBuffer_pipeline_inst.PC_IF;
+  // assign next_PC = dut.ReorderBuffer_pipeline_inst.PC_gen_inst.next_pc; 
+
+  logic [31:0] head_pc;
+  assign head_pc = test_PC[test_head];
+
+  logic branch_taken;
+  logic [31:0] next_branch_pc;
+  assign branch_taken = dut.exe_module_pipeline_inst.branch_taken;
+  assign next_branch_pc = dut.exe_module_pipeline_inst.next_pc;
+
+  logic [31:0] a,b,result;
+  assign a = dut.exe_module_pipeline_inst.a;
+  assign b = dut.exe_module_pipeline_inst.b;
+  assign result = dut.exe_module_pipeline_inst.result; 
+
+  logic [0:0] test_if_enable;
+  logic [0:0][3:0] test_if_ports_available;
+  import signals::*;
+  stage_t [15:0] test_current_status;
+  stage_t [15:0] test_status;
+
+  logic [7:0][15:0] test_masks;
+  logic [15:0] mask_layer1;
+  logic [15:0] inside_mask;
+  assign mask_layer1 = test_masks[0];
+  assign inside_mask = dut.ReorderBuffer_pipeline_inst.PC_gen_inst.inside_mask;
+
+  
+  stage_t [7:0][15:0] test_arrays;
+
+  logic test_is_pipeline_stall, test_is_ready;
+
+  assign test_if_enable = dut.if_enable;
+  assign test_if_ports_available = dut.if_ports_available;
+  assign test_current_status = dut.ReorderBuffer_pipeline_inst.current_status;
+  assign test_status = dut.ReorderBuffer_pipeline_inst.status;
+  assign test_masks = dut.ReorderBuffer_pipeline_inst.masks;
+  assign test_arrays = dut.ReorderBuffer_pipeline_inst.arrays;
+  assign test_is_pipeline_stall = dut.is_pipeline_stall;
+  assign test_is_ready = dut.is_ready;
+
+
   // 时钟源
   clock osc (
       .clk_11M0592(clk_11M0592),

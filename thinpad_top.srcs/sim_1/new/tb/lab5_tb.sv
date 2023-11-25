@@ -1,5 +1,7 @@
 `timescale 1ns / 1ps
 module lab5_tb;
+  logic [3:0] state_inside;
+  logic [31:0] data_inside;
 
   wire clk_50M, clk_11M0592;
 
@@ -38,16 +40,17 @@ module lab5_tb;
   wire uart_tsre;  // 数据发送完毕标志
 
   // Windows 需要注意路径分隔符的转义，例如 "D:\\foo\\bar.bin"
-  parameter BASE_RAM_INIT_FILE = "/tmp/main.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
-  parameter EXT_RAM_INIT_FILE = "/tmp/eram.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路径
+  parameter BASE_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\main.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
+  parameter EXT_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\eram.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路径
 
   initial begin
     // 在这里可以自定义测试输入序列，例如：
-    dip_sw = 32'h2;
+    dip_sw = 32'h80000000;
     touch_btn = 0;
     reset_btn = 0;
     push_btn = 0;
 
+    #10000
     #100;
     reset_btn = 1;
     #100;
@@ -65,11 +68,49 @@ module lab5_tb;
     uart.pc_send_byte(8'h32); // ASCII '2'
     #10000;
     uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+    uart.pc_send_byte(8'h32); // ASCII '2'
+    #10000;
+    uart.pc_send_byte(8'h33); // ASCII '3'
+    #10000;
+
 
     // PC 接收到数据后，会在仿真窗口中打印出数据
 
     // 等待一段时间，结束仿真
-    #10000 $finish;
+    #1000000 $finish;
   end
 
   // 待测试用户设计
@@ -111,6 +152,9 @@ module lab5_tb;
       .flash_byte_n(),
       .flash_we_n()
   );
+
+  assign state_inside = dut.u_lab5_master.fsm_state;
+  assign data_inside = dut.u_lab5_master.wb_dat_i;
 
   // 时钟源
   clock osc (

@@ -118,8 +118,18 @@ module lab2_top (
       .count  (count)
   );
 
+  trigger u_trigger(
+    .input_btn(push_btn),
+    .clk(clk_10M),
+    .signal(trigger)
+  );
   // 按键检测模块，在按键上升沿（按下）后输出高电平脉冲
   // TODO: 同上，实现 trigger 模块，并例化
+
+  SEG7_LUT u_out(
+    .iDIG(count),
+    .oSEG1(dpy0)
+  );
 
   // 低位数码管译码器
   // TODO: 例化模板中的 SEG7_LUT 模块
