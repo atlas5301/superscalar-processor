@@ -22,8 +22,8 @@ module ReorderBuffer_pipeline #(
     output logic [IF_PORT-1:0] if_enable,   //status of the delivered ports for IF stage
     input wire if_clear_signal,     //whether instructions should be emptied from buffer.
     input wire [DEPTH-1:0] if_clear_mask,    //the address of instructions in ROB to be emptied.
-    input wire [ROB_ADDR_WIDTH-1:0] if_set_pt,   //the entry to set next_PC
-    input wire [PC_WIDTH-1:0] if_next_pc,    //value of next_PC
+    input wire [ROB_ADDR_WIDTH-1:0] if_set_pt,   //the entry to set PC
+    input wire [PC_WIDTH-1:0] if_next_pc,    //value of PC
     input wire is_if_ready,     // is IF ready for restart after pipeline reset
     input wire if_signals_t if_entries_i [DEPTH-1:0],   //IF generated signals
     input wire stage_t [DEPTH-1:0] current_status_if,   //IF status updates

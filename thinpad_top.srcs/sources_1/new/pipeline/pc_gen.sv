@@ -77,7 +77,7 @@ module pc_gen_pipeline #(
 
 
     logic [ADDR_WIDTH-1:0] tmphead;
-    // logic [DEPTH-1:0][PC_WIDTH-1:0] next_pc;
+    logic [DEPTH-1:0][PC_WIDTH-1:0] next_pc;
     logic [DEPTH-1:0] inside_mask;
     logic [DEPTH-1:0] head_mask;
     logic new_if_mask_tmp;
@@ -93,6 +93,7 @@ module pc_gen_pipeline #(
             is_branch <= 'b0;   
             for (int i = 0; i < DEPTH; i++) begin
                 pc[i] = 32'h8000_0000;
+                next_pc[i] = 32'h80000004;
                 inside_mask[i] = 1'b1;
             end
             inside_mask[0] = 1'b0;
@@ -104,16 +105,16 @@ module pc_gen_pipeline #(
             if (refill) begin
                 inside_mask = inside_mask | mask;
                 if (if_clear_signal) begin
-                    pc[(if_set_pt+1)%DEPTH]=if_next_pc;
+                    next_pc[if_set_pt]=if_next_pc;
                 end
                 if (id_clear_signal) begin
-                    pc[(id_set_pt+1)%DEPTH]=id_next_pc;
+                    next_pc[id_set_pt]=id_next_pc;
                 end
                 if (exe_clear_signal) begin
-                    pc[(exe_set_pt+1)%DEPTH]=exe_next_pc;
+                    next_pc[exe_set_pt]=exe_next_pc;
                 end
                 if (mem_clear_signal) begin
-                    pc[(mem_set_pt+1)%DEPTH]=mem_next_pc;
+                    next_pc[mem_set_pt]=mem_next_pc;
                 end
 
                 // inside_mask = {inside_mask[DEPTH-2:0], inside_mask[DEPTH-1]};
@@ -143,23 +144,34 @@ module pc_gen_pipeline #(
 
                         for (int j=0;j<IF_PORT;j++) begin
                             tmp_mask[j] = inside_mask[(i+j)%DEPTH];
-                            tmppcs[j] = pc[(i+j)%DEPTH];
+                            tmppcs[j] = next_pc[(i+j)%DEPTH];
                             tmp_branch[j] = is_branch[(i+j)%DEPTH];
                         end
 
                         next_info = generate_next_pcs_and_masks(
-                        pc[(i+DEPTH-1)%DEPTH], 
+                        next_pc[(i+DEPTH-1)%DEPTH], 
                         tmp_mask,
                         tmp_branch,
                         tmppcs
                         );
+                        pc[(i+DEPTH)%DEPTH] = next_pc[(i+DEPTH-1)%DEPTH];
+
+                        for (int j=0;j<IF_PORT;j++) begin
+                            next_pc[(i+j)%DEPTH] = next_info[j].PC;
+                            is_branch[(i+j)%DEPTH] = next_info[j].is_branch;
+                        end
+
+                        for (int j=1;j<IF_PORT;j++) begin
+                            if (inside_mask[(i+j)%DEPTH]) begin
+                                pc[(i+j)%DEPTH] = next_pc[(i+j-1)%DEPTH];
+                            end
+                        end
 
                         for (int j=0;j<IF_PORT;j++) begin
                             inside_mask[(i+j)%DEPTH] = next_info[j].mask;
-                            pc[(i+j)%DEPTH] = next_info[j].PC;
-                            is_branch[(i+j)%DEPTH] = next_info[j].is_branch;
                         end
                         break;
+
 
                     end                     
                 end

@@ -41,7 +41,7 @@ module exe_module_pipeline #(
         logic [DEPTH-1:0] tmpmask;
         int shift;
 
-        tmpaddr = (addr + 2) %DEPTH;
+        tmpaddr = (addr + 1) %DEPTH;
 
         // Calculate the shift
         shift = (tmpaddr + DEPTH - head) % DEPTH;
