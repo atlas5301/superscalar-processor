@@ -38,7 +38,7 @@ module of_module_pipeline #(
     logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_of2;
     
 
-    assign current_status_of_enable = mask_of | mask_of2;
+    // assign current_status_of_enable = mask_of | mask_of2;
 
     // always_comb begin
     //     mask_of = 'b0;
@@ -56,6 +56,7 @@ module of_module_pipeline #(
     logic is_stall_cycle2;
 
     always_ff @(posedge clk) begin
+        current_status_of_enable <= mask_of | mask_of2;
         if (reset) begin
             is_of_ready = 1'b0;
             enable_addr_of = 'b0;
@@ -77,7 +78,7 @@ module of_module_pipeline #(
             if (is_pipeline_stall) begin
                 is_of_ready <= 1'b1;
                 if (is_ready) begin
-                    is_stall_cycle2 <= 1'b0;
+                    of_stall <= 1'b0;
                 end
                 // current_status_of_enable => 'b0;
             end else begin
@@ -151,7 +152,7 @@ module wb_module_pipeline  #(
 
     logic [31:0] debug_PC;
 
-    assign current_status_wb_enable = mask_wb;
+    // assign current_status_wb_enable = mask_wb;
 
     always_comb begin
         mask_wb = 'b0;
@@ -164,6 +165,7 @@ module wb_module_pipeline  #(
 
 
     always_ff @(posedge clk) begin
+        current_status_wb_enable <= mask_wb;
         if (reset) begin
             is_wb_ready = 1'b0;
             enable_addr_wb <= 'b0;

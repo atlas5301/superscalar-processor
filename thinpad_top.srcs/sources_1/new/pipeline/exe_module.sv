@@ -61,6 +61,11 @@ module exe_module_pipeline #(
     logic [EXE_PORT-1:0] enable_addr_exe;
     logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_exe;
     logic branch_flag;
+    logic unpredicted_jump;
+    logic [ROB_ADDR_WIDTH-1:0] unpredicted_jump_entry_addr;
+    logic [ROB_ADDR_WIDTH-1:0] unpredicted_jump_entry_head;
+    logic [PC_WIDTH-1:0] unpredicted_jump_pc_base;
+    logic [PC_WIDTH-1:0] unpredicted_jump_pc_additional;
 
     logic is_branch;
     branch_t branch_op;
@@ -71,7 +76,7 @@ module exe_module_pipeline #(
     logic [REG_DATA_WIDTH-1:0] a,b,result;
     logic [31:0] debug_PC;
 
-    assign current_status_exe_enable = mask_exe;
+    // assign current_status_exe_enable = mask_exe;
 
     always_comb begin
         mask_exe = 'b0;
@@ -80,10 +85,15 @@ module exe_module_pipeline #(
                 mask_exe[addr_exe[j]] = 1'b1;
             end
         end
+        if (unpredicted_jump) begin
+            mask_exe[unpredicted_jump_entry_addr] = 1'b1;
+        end
+
     end
 
 
     always_ff @(posedge clk) begin
+        current_status_exe_enable <= mask_exe;
         if (reset) begin
             is_exe_ready <= 1'b0;
             enable_addr_exe <= 'b0;
@@ -93,8 +103,19 @@ module exe_module_pipeline #(
             exe_set_pt <= 'b0;
             exe_next_pc <= 'b0;
             current_status_exe <= '{DEPTH{IF}};
+            unpredicted_jump <= 'b0;
 
         end else begin
+            if (unpredicted_jump) begin
+                exe_clear_signal <= 1'b1;
+                exe_set_pt <= unpredicted_jump_entry_addr;
+                next_pc = unpredicted_jump_pc_base + unpredicted_jump_pc_additional;
+                exe_next_pc <= next_pc;
+                exe_clear_mask <= generate_clear_mask(unpredicted_jump_entry_addr, unpredicted_jump_entry_head);
+                current_status_exe[unpredicted_jump_entry_addr] <= MEM;
+
+                unpredicted_jump <= 1'b0;
+            end
             if (is_pipeline_stall) begin
                 is_exe_ready <= 1'b1;
                 enable_addr_exe <= 'b0;
@@ -108,6 +129,12 @@ module exe_module_pipeline #(
                 enable_addr_exe = exe_enable;
                 branch_flag = 1'b0;
                 is_exe_ready <= 1'b0;
+
+                for (int i=0;i<EXE_PORT;i++) begin
+                    if (enable_addr_exe[i]) begin
+                        current_status_exe[addr_exe[i]] <= EXE;
+                    end
+                end
 
                 for (int i=0;i<EXE_PORT;i++) begin
                     if (branch_flag) begin
@@ -143,15 +170,15 @@ module exe_module_pipeline #(
                         branch_op = entries_o[addr_exe[i]].id_signals.branch_op;
 
                         if (is_branch) begin
-                            next_pc = entries_o[addr_exe[i]].if_signals.PC;
+                            // next_pc = entries_o[addr_exe[i]].if_signals.PC;
                             branch_taken = 1'b0;
                             case(branch_op)
                                 BEQ: begin
                                     if (a == b) begin
                                         branch_taken = 1'b1;
-                                        next_pc = next_pc + entries_o[addr_exe[i]].id_signals.immediate;                                   
+                                        // next_pc = next_pc + entries_o[addr_exe[i]].id_signals.immediate;                                   
                                     end else begin
-                                        next_pc = next_pc + 4;
+                                        // next_pc = next_pc + 4;
                                     end
                                 end
                                 default: begin
@@ -159,11 +186,12 @@ module exe_module_pipeline #(
                                 end
                             endcase
                             if (branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
-                                branch_flag = 1'b1;
-                                exe_clear_signal <= 1'b1;
-                                exe_set_pt <= addr_exe[i];
-                                exe_next_pc <= next_pc;
-                                exe_clear_mask <= generate_clear_mask(addr_exe[i], head);
+                                unpredicted_jump <= 1'b1;
+                                unpredicted_jump_entry_addr <= addr_exe[i];
+                                unpredicted_jump_entry_head <= head;
+                                unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
+                                unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
+                                break;
                             end
                         end
 

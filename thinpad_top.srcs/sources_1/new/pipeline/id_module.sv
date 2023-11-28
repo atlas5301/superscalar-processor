@@ -138,7 +138,7 @@ module id_module_pipeline #(
     logic [ID_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_id;
     
 
-    assign current_status_id_enable = mask_id;
+    // assign current_status_id_enable = mask_id;
 
     always_comb begin
         mask_id = 'b0;
@@ -151,6 +151,7 @@ module id_module_pipeline #(
 
 
     always_ff @(posedge clk) begin
+        current_status_id_enable <= mask_id;
         if (reset) begin
             is_id_ready <= 1'b0;
             enable_addr_id <= 'b0;

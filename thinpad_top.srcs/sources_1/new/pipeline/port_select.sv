@@ -57,7 +57,7 @@ module conflict_control_pipeline #(
 
             for (int j = 0; j < i; j++) begin
                 output_readenable[i] &= !(rotated_read1[i] && (rotated_read1[i] == rotated_write1[j])) && !(rotated_read2[i] && (rotated_read2[i] == rotated_write1[j]));
-                output_writeenable[i] &= !(rotated_write1[i] && (rotated_write1[i] == rotated_read1[j] || rotated_write1[i] == rotated_read2[j] || rotated_write1[i] == rotated_write1[j]));
+                output_writeenable[i] &= !(rotated_write1[i] && (rotated_write1[i] == rotated_read1[j] || rotated_write1[i] == rotated_read2[j]));
             end
         end
 
