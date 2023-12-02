@@ -45,6 +45,25 @@ module if_module_pipeline #(
 
 );
     import signals::*;
+    logic cache_we;
+    logic [IF_PORT-1:0][PC_WIDTH-1:0] cache_in_pc;
+    logic [ADDR_WIDTH-1:0] cache_in_inst;
+    logic [IF_PORT-1:0] cache_o_enable;
+    logic [IF_PORT-1:0][ADDR_WIDTH-1:0] cache_o_inst;
+    inst_cache_blocks #(
+        .PC_WIDTH(PC_WIDTH),
+        .ADDR_WIDTH(ADDR_WIDTH),
+        .DEPTH(DEPTH),
+        .IF_PORT(IF_PORT)
+    ) inst_cache(
+        .clk(clk),
+        .reset(reset),
+        .we(cache_we),
+        .in_pc(cache_in_pc),
+        .in_inst(cache_in_inst),
+        .o_enable(cache_o_enable),
+        .o_inst(cache_o_inst)
+    );
     typedef enum logic [1:0] {
         IDLE,
         WORKING
@@ -59,8 +78,34 @@ module if_module_pipeline #(
     
     logic [IF_PORT-1:0][ROB_ADDR_WIDTH-1:0] addresses;
     logic [IF_PORT-1:0] is_enable;
-    state_IF_t state_IF;
 
+    logic [IF_PORT-1:0][ROB_ADDR_WIDTH-1:0] tmp_if_ports_available;
+    logic [IF_PORT-1:0] tmp_if_enable;
+    state_IF_t state_IF;
+    int debug_cnt;
+    always_comb begin
+        cache_we = 0;
+        cache_in_inst = 0;
+        for(int i=0;i<IF_PORT;i++) cache_in_pc[i] = 1;
+        case(state_IF)  
+            IDLE: begin
+                if(!is_pipeline_stall) begin
+                    // TODO: finish 2 if-port
+                    for(int i=0;i<IF_PORT;i++) begin
+                            cache_in_pc[i] = PC_IF[if_ports_available[i]];
+                    end
+                end
+            end
+            WORKING: begin
+                if(finished_IF) begin
+                    cache_we = 1;
+                    cache_in_inst = read_data_IF;
+                    cache_in_pc[0] = PC_IF[addresses[0]];
+                end
+            end
+            default : ;
+        endcase
+    end
     always_ff @(posedge clk) begin
         if (reset) begin
             if_clear_signal <= 1'b0;
@@ -72,8 +117,9 @@ module if_module_pipeline #(
             if_set_pt <= 'b0;
             if_next_pc <= 'b0;
             current_status_if <= '{DEPTH{IF}};
-
+            debug_cnt <= 0;
         end else begin
+            debug_cnt <= debug_cnt + 1;
             case(state_IF) 
             IDLE: begin
                 current_status_if_enable = 'b0;
@@ -87,16 +133,34 @@ module if_module_pipeline #(
                     is_if_ready <= 1'b0;
                     addresses = if_ports_available;
                     is_enable = if_enable;
-                    //left empty for cache hit, when cache hit, transfer state to IF2
-
-                    if (is_enable[0]&& PC_ready[addresses[0]]) begin
-                        enable_IF <= 1'b1;
-                        address_IF <= PC_IF[addresses[0]];
-                        state_IF <= WORKING;
+                    // TODO: can only read One Inst, finish 2 ,fill IF_PORT
+                    for(int i=0;i<IF_PORT;i++) begin 
+                        if (is_enable[i]&& PC_ready[addresses[i]]) begin
+                            //cache hit
+                            // $display("cache_ic_pc : %h ; ADR : %h ; PC_IF[addresses[i]] : %h",cache_in_pc[i],addresses[i], PC_IF[addresses[i]]);
+                            if(cache_o_enable[i]) begin
+                                $display("hello : %h",cache_in_pc[i]);
+                                state_IF <= IDLE;
+                                debug_entry <= addresses[i];
+                                debug_PC <= PC_IF[addresses[i]];
+                                if_entries_i[addresses[i]].PC <= PC_IF[addresses[i]];
+                                if_entries_i[addresses[i]].inst <= cache_o_inst[i];
+                                if_entries_i[addresses[i]].branch_taken <= is_branch[addresses[i]];
+                                current_status_if[addresses[i]] <= ID;
+                                current_status_if_enable[addresses[i]] <= 1'b1;
+                            end
+                            //cache miss
+                            else begin
+                                $display("miss : %h",cache_in_pc[i]);
+                                state_IF <= WORKING; 
+                                enable_IF <= 1'b1;
+                                address_IF <= PC_IF[addresses[i]];
+                            end
+                        end
+                        break;
                     end
                 end
             end
-
             WORKING: begin
                 if (finished_IF) begin
                     state_IF <= IDLE;
@@ -105,13 +169,11 @@ module if_module_pipeline #(
                     if_entries_i[addresses[0]].PC <= PC_IF[addresses[0]];
                     if_entries_i[addresses[0]].inst <= read_data_IF;
                     if_entries_i[addresses[0]].branch_taken <= is_branch[addresses[0]];
-
                     enable_IF <= 1'b0;
                     current_status_if[addresses[0]] <= ID;
                     current_status_if_enable[addresses[0]] <= 1'b1;
                 end
             end
-
             default: begin
                 state_IF <= IDLE;
             end
