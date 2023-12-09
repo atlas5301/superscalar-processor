@@ -2,88 +2,96 @@
 import signals::*;
 module inst_cache_blocks #(
     parameter PC_WIDTH = 32,
-    parameter ADDR_WIDTH = 32,
-    parameter DEPTH = 64,
+    parameter DATA_WIDTH = 32,
     parameter IF_PORT = 2,
     parameter CACHE_WAYS = 4,
     parameter CACHE_WIDTH = 32,
-    parameter CACHE_BITWIDTH = 6
+    parameter bit CACHE_ENABLE = 1
 ) (
     input wire clk,
     input wire reset,
+
+    input wire [IF_PORT-1:0][PC_WIDTH-1:0] read_pc,
+    output reg [IF_PORT-1:0][CACHE_WAYS-1:0] check_valid,
+    output reg [IF_PORT-1:0][DATA_WIDTH-1:0] o_inst,
+
     input wire we,
-    input wire [IF_PORT-1:0][PC_WIDTH-1:0] in_pc,
-    input wire [ADDR_WIDTH-1:0] in_inst,
-    output reg [IF_PORT-1:0] o_enable,
-    output reg [IF_PORT-1:0][ADDR_WIDTH-1:0] o_inst
+    input wire [PC_WIDTH-1:0] wr_pc,
+    input wire [DATA_WIDTH-1:0] wr_inst
 );  
-    typedef struct packed {
-        logic [PC_WIDTH-1:0] pc;
-        logic [ADDR_WIDTH-1:0] inst;
-    } inst_cache_t;
 
-    inst_cache_t [CACHE_WIDTH-1:0][CACHE_WAYS-1:0] cache;
-    logic [CACHE_WIDTH-1:0][CACHE_BITWIDTH-1:0] head;
-    logic [CACHE_WAYS-1:0] way;
-    logic [CACHE_WIDTH-1:0] index;
-    int x;
+    localparam int CACHE_BITWIDTH = $clog2(CACHE_WIDTH);
+    localparam int WAY_BITWIDTH = $clog2(CACHE_WAYS);
 
-    function logic [3:0] get_cache_ways(
-            input logic [CACHE_WIDTH-1:0][CACHE_BITWIDTH-1:0] head,
-            input logic [CACHE_BITWIDTH-1:0] index, 
-            input logic [PC_WIDTH-1:0] pc, 
-            input logic we
-    );
-        if(we == 0) begin
-            for(int i=0;i<CACHE_WAYS;i++) 
-                if(cache[index][i].pc == pc) return i;
-            return CACHE_WAYS;
-        end else begin
-            for(int i=0;i<CACHE_WAYS;i++) 
-                if(cache[index][i].pc == 0) return i;
-            x = head[index];
-            head[index] = (head[index] + 1)% 4;
-            return x;
-        end
-    endfunction
+    logic [CACHE_WIDTH-1:0][CACHE_WAYS-1:0] valid;
+    logic [CACHE_WIDTH-1:0][CACHE_WAYS-1:0][PC_WIDTH-1:0] pc_entry;
+    logic [CACHE_WIDTH-1:0][CACHE_WAYS-1:0][DATA_WIDTH-1:0] inst;
+    logic [CACHE_WIDTH-1:0][WAY_BITWIDTH-1:0] way2write;
 
-    initial begin
-        for(int i=0;i<CACHE_WIDTH;i++) head[i] = 0;
-    end
     always_comb begin
-        index = 0;
-        way = 0 ;    
-        for(int i=0;i<IF_PORT;i++) begin 
-            o_enable[i] = 0;
-            o_inst[i] = 0;
-        end
-        if(we) begin
-            index = in_pc[0][31:2] % CACHE_WIDTH;
-            way = get_cache_ways(head, index, in_pc[0], we);
-        end else begin
-            for(int i=0;i<IF_PORT;i++) begin
-                index = in_pc[i][31:2] % CACHE_WIDTH;
-                way = get_cache_ways(head, index, in_pc[i], we);
-                if(way != CACHE_WAYS) begin
-                    o_enable[i] = 1;
-                    o_inst[i] = cache[index][way];
-                end else begin
-                    o_enable[i] = 0;
-                    o_inst[i] = 0;
+        if (CACHE_ENABLE) begin
+            for (int j=0; j< IF_PORT; j++) begin
+                logic [CACHE_BITWIDTH-1:0] tmp_addr = read_pc[j][CACHE_BITWIDTH+1:2];
+                check_valid[j] = 'b0;
+                o_inst[j] = 'b0;
+
+                for (int i=0; i< CACHE_WAYS; i++) begin
+                    if (valid[tmp_addr][i]) begin
+                        if (pc_entry[tmp_addr][i] == read_pc[j]) begin
+                            check_valid[j][i] = 1'b1;
+                        end
+                    end
+                end
+
+                for (int i=0; i< CACHE_WAYS; i++) begin
+                    if (check_valid[j][i]) begin
+                        o_inst[j] = inst[tmp_addr][i];
+                        break;
+                    end
                 end
             end
         end
+        else begin
+            for (int j=0; j< IF_PORT; j++) begin
+                check_valid[j] = 'b0;
+                o_inst[j] = 'b0;        
+            end
+        end
     end
+
     always_ff @(posedge clk) begin
         if (reset) begin
-            for (int i=0;i<CACHE_WIDTH;i++)
-                for(int j=0;j<CACHE_WAYS;j++)
-                    cache[i][j] <= 0;
-        end else begin
-            if(we) begin
-                cache[index][way].pc <= in_pc[0];
-                cache[index][way].inst <= in_inst;
-            end else ;
+            for (int i=0; i< CACHE_WIDTH; i++) begin
+                for (int j=0; j<CACHE_WAYS; j++) begin
+                    valid[i][j] <= 1'b0;
+                end
+                way2write[i] <= 'b0;
             end
+        end else begin
+            if (we) begin
+                logic [CACHE_BITWIDTH-1:0] tmp_addr = wr_pc[CACHE_BITWIDTH+1:2];
+                logic [WAY_BITWIDTH-1:0] tmp_way = way2write[tmp_addr];
+                logic flag = 1'b1;
+                for (int i=0; i< CACHE_WAYS; i++) begin
+                    if (valid[tmp_addr][i]) begin
+                        if (pc_entry[tmp_addr][i] == wr_pc) begin
+                            tmp_way = i;
+                            flag = 1'b0;
+                            break;
+                        end
+                    end
+                end
+
+                valid[tmp_addr][tmp_way] <= 1'b1;
+                pc_entry[tmp_addr][tmp_way] <= wr_pc;
+                inst[tmp_addr][tmp_way] <= wr_inst;
+                if (flag) begin
+                    // $display("new_entry %h %h",wr_pc, wr_inst);
+                    way2write[tmp_addr] <= (way2write[tmp_addr] + 1) % CACHE_WAYS;
+                end
+            end
+        end
+
     end
+
 endmodule

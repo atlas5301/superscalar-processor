@@ -87,7 +87,8 @@ module sram_controller #(
     STATE_READ_1,
     STATE_READ_2,
     STATE_WRITE_1,
-    STATE_WRITE_2
+    STATE_WRITE_2,
+    STATE_WRITE_3
   } state_t;
 
   state_t state;
@@ -128,6 +129,7 @@ module sram_controller #(
                   end
               end
               STATE_READ_1: begin
+                // $display("read1");
                   wb_dat_o <= sram_data_i_comb; 
                   wb_ack_o <= 1'b1;
                   ram_oe_n_reg <= 1'b1;
@@ -135,19 +137,29 @@ module sram_controller #(
               end
 
               STATE_READ_2: begin
+                // $display("read2");
                   wb_ack_o <= 1'b0;
                   state <= STATE_IDLE;
               end
               
 
               STATE_WRITE_1: begin
+                // $display("write1");
                   ram_we_n_reg <= 1'b0;
                   state <= STATE_WRITE_2;
               end
 
               STATE_WRITE_2: begin
+                // $display("write2");
                   ram_we_n_reg <= 1'b1;
-                  wb_ack_o <= 1;
+                  wb_ack_o <= 1'b1;
+                  state <= STATE_WRITE_3;
+              end
+
+              STATE_WRITE_3: begin
+                // $display("write3");
+                  ram_we_n_reg <= 1'b1;
+                  wb_ack_o <= 1'b0;
                   state <= STATE_IDLE;
               end
 

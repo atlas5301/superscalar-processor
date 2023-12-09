@@ -46,7 +46,7 @@ module tb;
   wire uart_tsre;  // 数据发送完毕标志
 
   // Windows 需要注意路径分隔符的转义，例如 "D:\\foo\\bar.bin"
-  parameter BASE_RAM_INIT_FILE = "C:\\Users\\zeven\\Desktop\\cod\\rv-2023\\asmcode\\test.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
+  parameter BASE_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\test.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
   parameter EXT_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\test.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路径
   parameter FLASH_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\sum.elf";  // Flash 初始化文件，请修改为实际的绝对路径
 
@@ -61,6 +61,7 @@ module tb;
     reset_btn = 1;
     #100;
     reset_btn = 0;
+    $display("reset");
     for (integer i = 0; i < 20; i = i + 1) begin
       #100;  // 等待 100ns
       push_btn = 1;  // 按下 push_btn 按钮
@@ -113,6 +114,9 @@ module tb;
       .flash_byte_n(flash_byte_n),
       .flash_we_n(flash_we_n)
   );
+
+  logic [15:0] is_at_if;
+  assign is_at_if = dut.ReorderBuffer_pipeline_inst.is_at_if;
 
   reg [31:0] result_DEBUG;
   reg [31:0] sel_MEM_DEBUG;

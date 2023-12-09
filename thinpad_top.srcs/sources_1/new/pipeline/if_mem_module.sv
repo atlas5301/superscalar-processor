@@ -5,7 +5,10 @@ module if_module_pipeline #(
     parameter ROB_ADDR_WIDTH = 6,
     parameter IF_PORT = 2,
     parameter DATA_WIDTH = 32,
-    parameter ADDR_WIDTH = 32
+    parameter ADDR_WIDTH = 32,
+    parameter CACHE_WAYS = 4,
+    parameter CACHE_WIDTH = 32,
+    parameter CACHE_ENABLE = 1
 ) (
     input wire clk,
     input wire reset,
@@ -45,29 +48,38 @@ module if_module_pipeline #(
 
 );
     import signals::*;
-    logic cache_we;
-    logic [IF_PORT-1:0][PC_WIDTH-1:0] cache_in_pc;
-    logic [ADDR_WIDTH-1:0] cache_in_inst;
-    logic [IF_PORT-1:0] cache_o_enable;
-    logic [IF_PORT-1:0][ADDR_WIDTH-1:0] cache_o_inst;
-    inst_cache_blocks #(
-        .PC_WIDTH(PC_WIDTH),
-        .ADDR_WIDTH(ADDR_WIDTH),
-        .DEPTH(DEPTH),
-        .IF_PORT(IF_PORT)
-    ) inst_cache(
-        .clk(clk),
-        .reset(reset),
-        .we(cache_we),
-        .in_pc(cache_in_pc),
-        .in_inst(cache_in_inst),
-        .o_enable(cache_o_enable),
-        .o_inst(cache_o_inst)
-    );
     typedef enum logic [1:0] {
         IDLE,
         WORKING
     } state_IF_t;
+
+    reg [IF_PORT-1:0][PC_WIDTH-1:0] cache_read_pc;
+    reg [IF_PORT-1:0][CACHE_WAYS-1:0] cache_check_valid;
+    reg [IF_PORT-1:0][DATA_WIDTH-1:0] cache_o_inst;
+
+    reg cache_we;
+    reg [PC_WIDTH-1:0] cache_wr_pc;
+    reg [DATA_WIDTH-1:0] cache_wr_inst;
+
+
+    inst_cache_blocks #(
+        .PC_WIDTH(PC_WIDTH),
+        .DATA_WIDTH(DATA_WIDTH),
+        .CACHE_WAYS(CACHE_WAYS),
+        .CACHE_WIDTH(CACHE_WIDTH),
+        .IF_PORT(IF_PORT),
+        .CACHE_ENABLE(CACHE_ENABLE)
+    ) inst_cache(
+        .clk(clk),
+        .reset(reset),
+        .read_pc(cache_read_pc),
+        .check_valid(cache_check_valid),
+        .o_inst(cache_o_inst),
+        .we(cache_we),
+        .wr_pc(cache_wr_pc),
+        .wr_inst(cache_wr_inst)
+    );
+
 
     logic [31:0] debug_PC;
     logic [3:0] debug_entry;
@@ -75,37 +87,22 @@ module if_module_pipeline #(
     assign sel_IF = 4'b1;
     assign write_IF = 1'b0;
     assign write_data_IF = 'b0;
+
+    logic [IF_PORT-1:0][ROB_ADDR_WIDTH-1:0] tmp_addresses;
+    logic [IF_PORT-1:0] tmp_is_enable;
     
     logic [IF_PORT-1:0][ROB_ADDR_WIDTH-1:0] addresses;
     logic [IF_PORT-1:0] is_enable;
 
-    logic [IF_PORT-1:0][ROB_ADDR_WIDTH-1:0] tmp_if_ports_available;
-    logic [IF_PORT-1:0] tmp_if_enable;
+    logic [ROB_ADDR_WIDTH-1:0] miss_address;
     state_IF_t state_IF;
-    int debug_cnt;
-    always_comb begin
-        cache_we = 0;
-        cache_in_inst = 0;
-        for(int i=0;i<IF_PORT;i++) cache_in_pc[i] = 1;
-        case(state_IF)  
-            IDLE: begin
-                if(!is_pipeline_stall) begin
-                    // TODO: finish 2 if-port
-                    for(int i=0;i<IF_PORT;i++) begin
-                            cache_in_pc[i] = PC_IF[if_ports_available[i]];
-                    end
-                end
-            end
-            WORKING: begin
-                if(finished_IF) begin
-                    cache_we = 1;
-                    cache_in_inst = read_data_IF;
-                    cache_in_pc[0] = PC_IF[addresses[0]];
-                end
-            end
-            default : ;
-        endcase
-    end
+    logic [DEPTH-1:0] tmp_current_status_if_enable;
+
+    logic flag;
+
+    logic stall_flag;
+
+
     always_ff @(posedge clk) begin
         if (reset) begin
             if_clear_signal <= 1'b0;
@@ -117,69 +114,138 @@ module if_module_pipeline #(
             if_set_pt <= 'b0;
             if_next_pc <= 'b0;
             current_status_if <= '{DEPTH{IF}};
-            debug_cnt <= 0;
+            tmp_is_enable <= 'b0;
+            cache_we <= 1'b0;
+            stall_flag <= 1'b0;
+
+
         end else begin
-            debug_cnt <= debug_cnt + 1;
+            cache_we <= 1'b0;
+            tmp_current_status_if_enable = 'b0;
+            tmp_is_enable <= 'b0;
+            for (int i=0;i<IF_PORT; i++) begin
+                if (if_enable[i]&& PC_ready[if_ports_available[i]]) begin
+                    tmp_is_enable[i] <= 1'b1;
+                    cache_read_pc[i] <= PC_IF[if_ports_available[i]];
+                    current_status_if[if_ports_available[i]] <= IF2;
+                    tmp_current_status_if_enable[if_ports_available[i]] = 1'b1;
+                end
+            end
+            // $display(if_ports_available[0], if_ports_available[1], if_enable, " IF0");
+            // $display("IF1: %h %h %h %h", tmp_addresses[0], tmp_addresses[1], tmp_is_enable, PC_IF[if_ports_available[0]]);
+            // $display("tmpstate:", tmp_current_status_if_enable);
+            //$display(PC_ready);
+
+            tmp_addresses <= if_ports_available;            
+
+            current_status_if_enable = 'b0;
+
             case(state_IF) 
             IDLE: begin
-                current_status_if_enable = 'b0;
                 if (is_pipeline_stall) begin
+                    tmp_is_enable <= 'b0;
+                    current_status_if_enable = 'b0;
+
                     is_if_ready <= 1'b1;
+                    // $display("stall_if");
+                    // stall_flag <= 1'b1;
+                    // if (stall_flag) begin
+                    //     is_if_ready <= 1'b1;
+                    // end
+
                     if (is_ready) begin
                         if_clear_signal <= 1'b0;
                         if_clear_mask <= 'b0;
+                        stall_flag <= 1'b0;
                     end
+
                 end else begin
                     is_if_ready <= 1'b0;
-                    addresses = if_ports_available;
-                    is_enable = if_enable;
-                    // TODO: can only read One Inst, finish 2 ,fill IF_PORT
-                    for(int i=0;i<IF_PORT;i++) begin 
+
+                    addresses = tmp_addresses;
+                    is_enable = tmp_is_enable;
+
+                    for (int i=0;i<IF_PORT; i++) begin
+                        if (tmp_is_enable[i]) begin
+                            // $display("hey", tmp_addresses[i]);
+                            current_status_if[tmp_addresses[i]] <= IF;
+                            current_status_if_enable[tmp_addresses[i]] = 1'b1;
+                        end
+                    end
+
+                    // $display("hey_end");
+                    // $display("state:", current_status_if_enable);
+
+                    flag = 1'b1;
+
+                    for (int i=0; i< IF_PORT; i++) begin
                         if (is_enable[i]&& PC_ready[addresses[i]]) begin
-                            //cache hit
-                            // $display("cache_ic_pc : %h ; ADR : %h ; PC_IF[addresses[i]] : %h",cache_in_pc[i],addresses[i], PC_IF[addresses[i]]);
-                            if(cache_o_enable[i]) begin
-                                $display("hello : %h",cache_in_pc[i]);
-                                state_IF <= IDLE;
-                                debug_entry <= addresses[i];
-                                debug_PC <= PC_IF[addresses[i]];
-                                if_entries_i[addresses[i]].PC <= PC_IF[addresses[i]];
-                                if_entries_i[addresses[i]].inst <= cache_o_inst[i];
-                                if_entries_i[addresses[i]].branch_taken <= is_branch[addresses[i]];
-                                current_status_if[addresses[i]] <= ID;
-                                current_status_if_enable[addresses[i]] <= 1'b1;
-                            end
-                            //cache miss
-                            else begin
-                                $display("miss : %h",cache_in_pc[i]);
-                                state_IF <= WORKING; 
+                            if ((cache_check_valid[i] == 'b0)) begin
+                                // $display("miss %h", PC_IF[addresses[i]]);
+                                // if (i != 0) begin
+                                //     break;
+                                // end
                                 enable_IF <= 1'b1;
                                 address_IF <= PC_IF[addresses[i]];
+                                state_IF <= WORKING;
+                                miss_address <= addresses[i];
+                                current_status_if[addresses[i]] <= IF2;
+                                flag = 1'b0;
+                                break;
+                            end else begin
+                                // $display("hit %d %h %h", i, PC_IF[addresses[i]], cache_o_inst[i]);
+                                enable_IF <= 1'b0;
+                                if_entries_i[addresses[i]].PC <= PC_IF[addresses[i]];
+                                if_entries_i[addresses[i]].inst <= cache_o_inst[i];
+                                if_entries_i[addresses[i]].branch_taken <= is_branch[addresses[i]];  
+                                current_status_if[addresses[i]] <= ID;                        
                             end
                         end
-                        break;
                     end
+
+                    if (flag) begin
+                        current_status_if_enable = current_status_if_enable | tmp_current_status_if_enable;
+                    end
+
+                    //$display("state:", current_status_if_enable);
+
                 end
             end
+
             WORKING: begin
                 if (finished_IF) begin
+                    //$display("mem_access", miss_address);
                     state_IF <= IDLE;
-                    debug_entry <= addresses[0];
-                    debug_PC <= PC_IF[addresses[0]];
-                    if_entries_i[addresses[0]].PC <= PC_IF[addresses[0]];
-                    if_entries_i[addresses[0]].inst <= read_data_IF;
-                    if_entries_i[addresses[0]].branch_taken <= is_branch[addresses[0]];
+                    debug_entry <= miss_address;
+                    debug_PC <= PC_IF[miss_address];
+                    if_entries_i[miss_address].PC <= PC_IF[miss_address];
+                    if_entries_i[miss_address].inst <= read_data_IF;
+                    if_entries_i[miss_address].branch_taken <= is_branch[miss_address];
+
                     enable_IF <= 1'b0;
-                    current_status_if[addresses[0]] <= ID;
-                    current_status_if_enable[addresses[0]] <= 1'b1;
+                    current_status_if[miss_address] <= ID;
+                    current_status_if_enable[miss_address] = 1'b1;
+
+                    cache_we <= 1'b1;
+                    cache_wr_pc <= PC_IF[miss_address];
+                    cache_wr_inst <= read_data_IF;
+
+                    if (!is_pipeline_stall) begin
+                        current_status_if_enable = current_status_if_enable | tmp_current_status_if_enable;
+                    end
+
+                    //$display("fetch %h %h", PC_IF[miss_address], read_data_IF);
                 end
             end
+
             default: begin
                 state_IF <= IDLE;
             end
             
             endcase
+            //$display("state:", current_status_if_enable);
         end
+
     end
 
 
@@ -313,6 +379,7 @@ module mem_module_pipeline #(
             IDLE: begin
                 if (is_pipeline_stall) begin
                     is_mem_ready <= 1'b1;
+                    // $display("stall_mem");
                     current_status_mem_enable = 'b0;
                     if (is_ready) begin
                         mem_clear_signal <= 1'b0;
@@ -340,7 +407,7 @@ module mem_module_pipeline #(
                             end else begin
                                 bypass_mem = 1'b1;
                                 mem_entries_i[addresses[i]].rf_wdata_mem <= entries_o[addresses[i]].exe_signals.rf_wdata_exe;
-                                current_status_mem_enable[addresses[i]] <= 1'b1;
+                                current_status_mem_enable[addresses[i]] = 1'b1;
                                 current_status_mem[addresses[i]] = WB;
                             end
                         end
@@ -355,6 +422,13 @@ module mem_module_pipeline #(
                         sel_MEM_DEBUG = sel_MEM;
                         state_MEM <= WORKING;
                         mem_entries_i[addresses[0]].rf_wdata_mem <= entries_o[addresses[0]].exe_signals.rf_wdata_exe;
+                        // if (entries_o[addresses[0]].id_signals.mem_write) begin
+                        //     $display("MEM: %h %h %h %b", 
+                        //     entries_o[addresses[0]].if_signals.PC,
+                        //     entries_o[addresses[0]].exe_signals.rf_wdata_exe, 
+                        //     entries_o[addresses[0]].of_signals.rf_rdata_b, 
+                        //     sel_MEM);
+                        // end
                     end
                 end
             end
