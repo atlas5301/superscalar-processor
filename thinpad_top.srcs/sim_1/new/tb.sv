@@ -61,6 +61,7 @@ module tb;
     reset_btn = 1;
     #100;
     reset_btn = 0;
+    $display("reset");
     for (integer i = 0; i < 20; i = i + 1) begin
       #100;  // 等待 100ns
       push_btn = 1;  // 按下 push_btn 按钮
@@ -113,6 +114,9 @@ module tb;
       .flash_byte_n(flash_byte_n),
       .flash_we_n(flash_we_n)
   );
+
+  logic [15:0] is_at_if;
+  assign is_at_if = dut.ReorderBuffer_pipeline_inst.is_at_if;
 
   reg [31:0] result_DEBUG;
   reg [31:0] sel_MEM_DEBUG;
