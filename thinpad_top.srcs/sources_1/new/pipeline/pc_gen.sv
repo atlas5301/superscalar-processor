@@ -97,7 +97,7 @@ module pc_gen_pipeline #(
                 inside_mask[i] = 1'b1;
             end
             inside_mask[0] = 1'b0;
-            is_branch = 'b0;
+            //is_branch <= 'b0;
             // next_pc[0] = 'b100;
             // inside_mask[head] = 1'b0;
 
@@ -116,7 +116,7 @@ module pc_gen_pipeline #(
                 if (mem_clear_signal) begin
                     next_pc[mem_set_pt]=mem_next_pc;
                 end
-
+                //$display("inside_mask", inside_mask);
                 // inside_mask = {inside_mask[DEPTH-2:0], inside_mask[DEPTH-1]};
                 // inside_mask[head] = 1'b0;
                 // for (int j=0;j<IF_PORT;j++) begin
@@ -180,8 +180,10 @@ module pc_gen_pipeline #(
                 //inside_mask = inside_mask & head_mask;
                 // end          
             end
+            //$display("first:%b", new_if_mask);
+            inside_mask = inside_mask | new_if_mask;
 
-            inside_mask <= inside_mask | new_if_mask;
+            //$display("next:%b", inside_mask);
 
         
 

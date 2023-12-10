@@ -56,7 +56,7 @@ module of_module_pipeline #(
     logic is_stall_cycle2;
 
     always_ff @(posedge clk) begin
-        current_status_of_enable <= mask_of | mask_of2;
+        // current_status_of_enable <= mask_of | mask_of2;
         if (reset) begin
             is_of_ready = 1'b0;
             enable_addr_of = 'b0;
@@ -70,6 +70,9 @@ module of_module_pipeline #(
                     of_entries_i[addr_of[i]].rf_rdata_a <= rd_data[i*2];
                     of_entries_i[addr_of[i]].rf_rdata_b <= rd_data[i*2+1];
                     current_status_of[addr_of[i]] <= EXE;
+                    if (entries_o[addr_of[i]].if_signals.PC == 32'h80000074) begin
+                        //$display("0074-OF2 %d", i);
+                    end
                 end
             end
             addr_of2 = addr_of;
@@ -77,6 +80,7 @@ module of_module_pipeline #(
             enable_addr_of = 'b0;
             if (is_pipeline_stall) begin
                 is_of_ready <= 1'b1;
+                // $display("stall_of");
                 if (is_ready) begin
                     of_stall <= 1'b0;
                 end
@@ -91,6 +95,9 @@ module of_module_pipeline #(
                         rd_addr[i*2] <= entries_o[addr_of[i]].id_signals.rr_a;
                         rd_addr[i*2+1] <= entries_o[addr_of[i]].id_signals.rr_b;
                         current_status_of[addr_of[i]] <= OF2;
+                        if (entries_o[addr_of[i]].if_signals.PC == 32'h80000074) begin
+                           // $display("0074-OF %d", i);
+                        end
                     end
                 end
 
@@ -107,6 +114,7 @@ module of_module_pipeline #(
                 mask_of2[addr_of2[j]] = 1'b1;
             end
         end
+        current_status_of_enable <= mask_of | mask_of2;
     end
 
 
@@ -161,11 +169,12 @@ module wb_module_pipeline  #(
                 mask_wb[addr_wb[j]] = 1'b1;
             end
         end
+        current_status_wb_enable = mask_wb;
     end
 
 
     always_ff @(posedge clk) begin
-        current_status_wb_enable <= mask_wb;
+        // current_status_wb_enable <= mask_wb;
         if (reset) begin
             is_wb_ready = 1'b0;
             enable_addr_wb <= 'b0;
@@ -175,6 +184,7 @@ module wb_module_pipeline  #(
 
         end else begin
             if (is_pipeline_stall) begin
+                // $display("stall_wb");
                 is_wb_ready <= 1'b1;
                 enable_addr_wb <= 'b0;
                 wr_en <= 'b0;

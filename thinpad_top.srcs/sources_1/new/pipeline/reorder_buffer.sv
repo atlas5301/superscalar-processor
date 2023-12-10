@@ -123,21 +123,21 @@ module ReorderBuffer_pipeline #(
     stage_t [NUM_ARRAYS-1:0][DEPTH-1:0] arrays;
 
     assign masks[0] = is_pipeline_stall ? if_clear_mask | id_clear_mask | exe_clear_mask | mem_clear_mask : '{DEPTH{1'b0}};
-    assign masks[1] = current_status_if_enable;
-    assign masks[2] = current_status_id_enable;
-    assign masks[3] = current_status_of_enable;
-    assign masks[4] = current_status_exe_enable;
-    assign masks[5] = current_status_mem_enable;
-    assign masks[6] = current_status_wb_enable;
+    assign masks[6] = current_status_if_enable;
+    assign masks[5] = current_status_id_enable;
+    assign masks[4] = current_status_of_enable;
+    assign masks[3] = current_status_exe_enable;
+    assign masks[2] = current_status_mem_enable;
+    assign masks[1] = current_status_wb_enable;
     assign masks[NUM_ARRAYS-1] = '{DEPTH{1'b1}};
 
     assign arrays[0] = '{DEPTH{IF}};
-    assign arrays[1] = current_status_if;
-    assign arrays[2] = current_status_id;
-    assign arrays[3] = current_status_of;
-    assign arrays[4] = current_status_exe;
-    assign arrays[5] = current_status_mem;
-    assign arrays[6] = current_status_wb;
+    assign arrays[6] = current_status_if;
+    assign arrays[5] = current_status_id;
+    assign arrays[4] = current_status_of;
+    assign arrays[3] = current_status_exe;
+    assign arrays[2] = current_status_mem;
+    assign arrays[1] = current_status_wb;
     assign arrays[NUM_ARRAYS-1] = status;
 
 
@@ -209,22 +209,18 @@ module ReorderBuffer_pipeline #(
         .WIDTH(NUM_REGS),
         .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
         .REG_ADDR_LEN(REG_ADDR_LEN),
-        .NUM_OUTPUT_WB(WB_PORT),
         .NUM_OUTPUT_OF(OF_PORT)
     ) conflict_control_inst (
         .head(head),
         .read1(read1_conflict_control),
         .read2(read2_conflict_control),
         .write1(write1_conflict_control),
-        .entrymask_write(is_at_wb),
         .entrymask_read(is_at_of),
-        .output_wbenable(wb_enable),
         .output_ofenable(of_enable),    
-        .output_ports_wb(wb_ports_available),
         .output_ports_of(of_ports_available)
     );
 
-    port_select_first_n_pipeline #(
+    port_select_pipeline #(
         .DEPTH(DEPTH),
         .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
         .NUM_OUTPUT(IF_PORT)
@@ -249,7 +245,7 @@ module ReorderBuffer_pipeline #(
     port_select_pipeline #(
         .DEPTH(DEPTH),
         .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
-        .NUM_OUTPUT(IF_PORT)
+        .NUM_OUTPUT(EXE_PORT)
     ) port_select_exe (
         .head(head),
         .enable(is_at_exe),
@@ -257,22 +253,35 @@ module ReorderBuffer_pipeline #(
         .output_ports(exe_ports_available)
     );
 
-    port_select_first_n_pipeline #(
+    port_select_first_n_pipeline_with_ignore_mask #(
         .DEPTH(DEPTH),
         .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
-        .NUM_OUTPUT(IF_PORT)
+        .NUM_OUTPUT(MEM_PORT)
     ) port_select_mem (
         .head(head),
         .enable(is_at_mem),
+        .ignore(is_at_wb),
         .output_enable(mem_enable),
         .output_ports(mem_ports_available)
     );
 
+    port_select_first_n_pipeline #(
+        .DEPTH(DEPTH),
+        .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
+        .NUM_OUTPUT(WB_PORT)
+    ) port_select_wb (
+        .head(head),
+        .enable(is_at_wb),
+        .output_enable(wb_enable),
+        .output_ports(wb_ports_available)
+    );
+
 
     logic [DEPTH-1:0] new_if_mask;
-    logic [DEPTH-1:0] new_head_pc_gen;
+    logic [ROB_ADDR_WIDTH-1:0] new_head_pc_gen;
     always_comb begin
         new_if_mask = 'b0;
+        new_head_pc_gen = head;
         for (int j = 0; j < WB_PORT; j = j + 1) begin
             if (wb_enable[j]) begin
                 new_if_mask[wb_ports_available[j]] = 1'b1;
@@ -324,6 +333,12 @@ module ReorderBuffer_pipeline #(
             end
         end else begin
             status <= current_status;
+
+            // for (int i=0; i<DEPTH;i++) begin
+            //     if (entries_o[i].if_signals.PC == 32'h80000074) begin
+            //         $display("inst at %d", i, current_status[i]);
+            //     end
+            // end
         end
 
     end
