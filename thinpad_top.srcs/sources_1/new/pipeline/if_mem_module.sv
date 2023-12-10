@@ -262,7 +262,10 @@ module mem_module_pipeline #(
     parameter ROB_ADDR_WIDTH = 6,
     parameter MEM_PORT = 2,
     parameter DATA_WIDTH = 32,
-    parameter ADDR_WIDTH = 32
+    parameter ADDR_WIDTH = 32,
+    parameter REG_DATA_WIDTH = 32,
+    parameter int MEM_WRITE_PORTS = 4, 
+    parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6
 ) (
     input wire clk,
     input wire reset,
@@ -291,7 +294,15 @@ module mem_module_pipeline #(
     output logic [DATA_WIDTH-1:0] write_data_MEM,
     output logic [3:0] sel_MEM,
     input wire [DATA_WIDTH-1:0] read_data_MEM,
-    input wire finished_MEM
+    input wire finished_MEM,
+
+    output logic [MEM_WRITE_PORTS-1:0] mem_wr_enable,
+    output logic [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_addr,
+
+    output reg [MEM_WRITE_PORTS-1:0] wr_en_mem,
+    output reg [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_mem,
+    output reg [MEM_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_mem
+
 );
     import signals::*;
     function logic [3:0] generate_byte_mask(input logic [31:0] address, input logic [2:0] read_length);
@@ -368,6 +379,7 @@ module mem_module_pipeline #(
     logic access_mem;
     logic bypass_mem;
     logic [DATA_WIDTH-1:0] tmpdata;
+    logic [DATA_WIDTH-1:0] result;
 
     always_ff @(posedge clk) begin
         if (reset) begin
@@ -381,7 +393,15 @@ module mem_module_pipeline #(
             mem_set_pt <= 'b0;
             mem_next_pc <= 'b0;
             current_status_mem <= '{DEPTH{IF}};
+
+            wr_en_mem <= 'b0;
+            mem_wr_enable <= 'b0;
+
         end else begin
+
+            wr_en_mem <= 'b0;
+            mem_wr_enable <= 'b0;
+
             case(state_MEM) 
             IDLE: begin
                 if (is_pipeline_stall) begin
@@ -428,7 +448,7 @@ module mem_module_pipeline #(
                         sel_MEM = generate_byte_mask(entries_o[addresses[0]].exe_signals.rf_wdata_exe, entries_o[addresses[0]].id_signals.mem_len);
                         sel_MEM_DEBUG = sel_MEM;
                         state_MEM <= WORKING;
-                        mem_entries_i[addresses[0]].rf_wdata_mem <= entries_o[addresses[0]].exe_signals.rf_wdata_exe;
+                        result = entries_o[addresses[0]].exe_signals.rf_wdata_exe;
                         // if (entries_o[addresses[0]].id_signals.mem_write) begin
                         //     $display("MEM: %h %h %h %b", 
                         //     entries_o[addresses[0]].if_signals.PC,
@@ -445,13 +465,21 @@ module mem_module_pipeline #(
                     state_MEM <= IDLE;
                     if (~write_MEM) begin
                         tmpdata = read_data_MEM;
-                        mem_entries_i[addresses[0]].rf_wdata_mem <= extend_to_32bit(entries_o[addresses[0]].id_signals.mem_is_signed, sel_MEM, tmpdata);
+                        result = extend_to_32bit(entries_o[addresses[0]].id_signals.mem_is_signed, sel_MEM, tmpdata);
                         result_DEBUG <= read_data_MEM;
                         //extend_to_32bit(entries_o[addresses[0]].id_signals.mem_is_signed, sel_MEM, tmpdata);
                     end
+                    mem_entries_i[addresses[0]].rf_wdata_mem <= result;
                     enable_MEM <= 1'b0;
                     current_status_mem[addresses[0]] = WB;
                     current_status_mem_enable[addresses[0]] = 1'b1;
+
+
+                    wr_en_mem[0] <= 1'b1;
+                    mem_wr_enable[0] <= 1'b1;
+                    mem_wr_physical_addr[0] <= entries_o[addresses[0]].id_signals.dst_rf_tag;
+                    wr_addr_mem[0] <= entries_o[addresses[0]].id_signals.dst_rf_tag;
+                    wr_data_mem[0] <= result;
                 end
             end
             

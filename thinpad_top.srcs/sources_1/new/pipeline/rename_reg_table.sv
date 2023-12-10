@@ -13,34 +13,34 @@ module rename_register_mapping_table #(
     parameter int ROB_ADDR_WIDTH = 6,
     parameter int OF_PORT = 4
 ) (
-    input logic clk,
-    input logic reset,
-    input logic re_map,
+    input wire clk,
+    input wire reset,
+    input wire re_map,
 
     output logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out,
 
     output logic [ASSIGN_PORTS-1:0] available_regs_enable,
     output logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] available_physical_regs,
 
-    input logic [ASSIGN_PORTS-1:0] assign_regs_enable,
-    // input logic [ASSIGN_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] assign_logical_regs,
-    input logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] assign_physical_regs,
+    input wire [ASSIGN_PORTS-1:0] assign_regs_enable,
+    // input wire [ASSIGN_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] assign_logical_regs,
+    input wire [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] assign_physical_regs,
 
-    input logic [SUBMIT_PORTS-1:0] submit_regs_enable,
-    input logic [SUBMIT_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] submit_logical_regs,
-    input logic [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs,
+    input wire [SUBMIT_PORTS-1:0] submit_regs_enable,
+    input wire [SUBMIT_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] submit_logical_regs,
+    input wire [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs,
 
     input riscv_pipeline_signals_t entries_o [DEPTH-1:0],
-    input stage_t [DEPTH-1:0] current_status,
-    input logic [ROB_ADDR_WIDTH-1:0] head,
+    input wire stage_t [DEPTH-1:0] current_status,
+    input wire [ROB_ADDR_WIDTH-1:0] head,
 
     output logic [NUM_PHYSICAL_REGISTERS-1:0] reg_valid,
 
-    input logic [EXE_WRITE_PORTS-1:0] exe_wr_enable,
-    input logic [EXE_WRITE_PORTS-1:0] exe_wr_physical_addr,
+    input wire [EXE_WRITE_PORTS-1:0] exe_wr_enable,
+    input wire [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] exe_wr_physical_addr,
 
-    input logic [MEM_WRITE_PORTS-1:0] mem_wr_enable,
-    input logic [MEM_WRITE_PORTS-1:0] mem_wr_physical_addr,  
+    input wire [MEM_WRITE_PORTS-1:0] mem_wr_enable,
+    input wire [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_addr,  
 
     output logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available,    //delivered ports for OF stage
     output logic [OF_PORT-1:0] of_enable   //status of the delivered ports for OF stage   
@@ -85,17 +85,17 @@ module rename_register_mapping_table #(
 
     always_comb begin
         reg_valid_input_ahead = 'b0;
-        // for (int i = 0; i< EXE_WRITE_PORTS; i++) begin
-        //     if (exe_wr_enable[i]) begin
-        //         reg_valid_input_ahead[exe_wr_physical_addr[i]] = 1'b1;
-        //     end
-        // end        
+        for (int i = 0; i< EXE_WRITE_PORTS; i++) begin
+            if (exe_wr_enable[i]) begin
+                reg_valid_input_ahead[exe_wr_physical_addr[i]] = 1'b1;
+            end
+        end        
 
-        // for (int i = 0; i< MEM_WRITE_PORTS; i++) begin
-        //     if (mem_wr_enable[i]) begin
-        //         reg_valid_input_ahead[mem_wr_physical_addr[i]] = 1'b1;
-        //     end
-        // end  
+        for (int i = 0; i< MEM_WRITE_PORTS; i++) begin
+            if (mem_wr_enable[i]) begin
+                reg_valid_input_ahead[mem_wr_physical_addr[i]] = 1'b1;
+            end
+        end  
     end
 
     int current_port;
@@ -234,7 +234,7 @@ module rename_register_mapping_table #(
             //         //$display("%d %d", i, assign_physical_regs[i]);
             //     end
             // end
-            //$display("assign end");
+            // $display("assign end");
             // re map all existing valid regs.
             if (re_map) begin
                 // $display("REMAPPPPPPPPPPPPPPPPPPPP");

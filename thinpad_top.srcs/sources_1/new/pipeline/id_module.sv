@@ -33,10 +33,10 @@ module id_module_pipeline #(
     input wire is_ready,
     input wire is_pipeline_stall,
 
-    input logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out,
+    input wire [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out,
 
-    input logic [ASSIGN_PORTS-1:0] available_regs_enable,
-    input logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] available_physical_regs,
+    input wire [ASSIGN_PORTS-1:0] available_regs_enable,
+    input wire [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] available_physical_regs,
 
     output logic [ASSIGN_PORTS-1:0] assign_regs_enable,
     // output logic [ASSIGN_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] assign_logical_regs,

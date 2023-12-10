@@ -214,9 +214,9 @@ module wb_module_pipeline  #(
                 end
                 for (int i=0;i<WB_PORT;i++) begin
                     if (enable_addr_wb[i]) begin
-                        wr_addr[i] <= entries_o[addr_wb[i]].id_signals.dst_rf_tag;
-                        wr_data[i] <= entries_o[addr_wb[i]].mem_signals.rf_wdata_mem;
-                        wr_en[i] <= 1'b1;
+                        // wr_addr[i] <= entries_o[addr_wb[i]].id_signals.dst_rf_tag;
+                        // wr_data[i] <= entries_o[addr_wb[i]].mem_signals.rf_wdata_mem;
+                        // wr_en[i] <= 1'b1;
                         current_status_wb[addr_wb[i]] <= IF;
                         next_head <= (addr_wb[i]+1)%DEPTH;
 

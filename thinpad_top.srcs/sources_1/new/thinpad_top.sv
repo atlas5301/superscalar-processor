@@ -329,10 +329,10 @@ logic [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs;
 logic [NUM_PHYSICAL_REGISTERS-1:0] reg_valid;
 
 logic [EXE_WRITE_PORTS-1:0] exe_wr_enable;
-logic [EXE_WRITE_PORTS-1:0] exe_wr_physical_addr;
+logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] exe_wr_physical_addr;
 
 logic [MEM_WRITE_PORTS-1:0] mem_wr_enable;
-logic [MEM_WRITE_PORTS-1:0] mem_wr_physical_addr;
+logic [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_addr;
 
 rename_register_mapping_table #(
     .NUM_LOGICAL_REGISTERS(NUM_LOGICAL_REGISTERS),
@@ -513,7 +513,10 @@ mem_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .MEM_PORT(MEM_PORT),
     .ADDR_WIDTH(32), // Address width
-    .DATA_WIDTH(32)  // Data width
+    .DATA_WIDTH(32), // Data width
+    .REG_DATA_WIDTH(REG_DATA_WIDTH),
+    .MEM_WRITE_PORTS(MEM_WRITE_PORTS), 
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN)
 ) mem_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -537,7 +540,14 @@ mem_module_pipeline #(
     .write_data_MEM(write_data_MEM),
     .sel_MEM(sel_MEM),
     .read_data_MEM(read_data_MEM),
-    .finished_MEM(finished_MEM)
+    .finished_MEM(finished_MEM),
+
+    .mem_wr_enable(mem_wr_enable),
+    .mem_wr_physical_addr(mem_wr_physical_addr),
+
+    .wr_en_mem(wr_en_mem),
+    .wr_addr_mem(wr_addr_mem),
+    .wr_data_mem(wr_data_mem)
 );
 
 id_module_pipeline #(
@@ -590,6 +600,14 @@ logic [NUM_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data;
 logic [NUM_READ_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] rd_addr;
 logic [NUM_READ_PORTS-1:0][REG_DATA_WIDTH-1:0] rd_data;
 
+reg [EXE_WRITE_PORTS-1:0] wr_en_exe;
+reg [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe;
+reg [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe;
+
+reg [MEM_WRITE_PORTS-1:0] wr_en_mem;
+reg [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_mem;
+reg [MEM_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_mem;
+
 
 register_file_pipeline #(
     .REG_DATA_WIDTH(DATA_WIDTH),          // Bitwidth of data
@@ -603,7 +621,15 @@ register_file_pipeline #(
     .wr_addr(wr_addr),
     .wr_data(wr_data),
     .rd_addr(rd_addr),
-    .rd_data(rd_data)
+    .rd_data(rd_data),
+
+    .wr_en_exe(wr_en_exe),
+    .wr_addr_exe(wr_addr_exe),
+    .wr_data_exe(wr_data_exe),
+
+    .wr_en_mem(wr_en_mem),
+    .wr_addr_mem(wr_addr_mem),
+    .wr_data_mem(wr_data_mem)
     // output reg [REG_DATA_WIDTH-1:0] debug
 );
 
@@ -675,7 +701,9 @@ exe_module_pipeline #(
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .EXE_PORT(EXE_PORT),
-    .REG_DATA_WIDTH(DATA_WIDTH)        
+    .REG_DATA_WIDTH(DATA_WIDTH),
+    .EXE_WRITE_PORTS(EXE_WRITE_PORTS), 
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN)      
 ) exe_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -694,7 +722,14 @@ exe_module_pipeline #(
     .entries_o(entries_o),
     .is_ready(is_ready),
     .is_pipeline_stall(is_pipeline_stall),
-    .head(head)
+    .head(head),
+
+    .exe_wr_enable(exe_wr_enable),
+    .exe_wr_physical_addr(exe_wr_physical_addr),
+
+    .wr_en_exe(wr_en_exe),
+    .wr_addr_exe(wr_addr_exe),
+    .wr_data_exe(wr_data_exe)
 );
 
 

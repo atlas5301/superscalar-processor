@@ -5,7 +5,9 @@ module exe_module_pipeline #(
     parameter DEPTH = 64,
     parameter ROB_ADDR_WIDTH = 6,
     parameter EXE_PORT = 2,
-    parameter REG_DATA_WIDTH = 32  
+    parameter REG_DATA_WIDTH = 32,
+    parameter int EXE_WRITE_PORTS = 4, 
+    parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6
 ) (
     input wire clk,
     input wire reset,
@@ -31,7 +33,15 @@ module exe_module_pipeline #(
     // Status signals
     input wire is_ready,
     input wire is_pipeline_stall,
-    input wire [ROB_ADDR_WIDTH-1:0] head
+    input wire [ROB_ADDR_WIDTH-1:0] head,
+
+    output logic [EXE_WRITE_PORTS-1:0] exe_wr_enable,
+    output logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] exe_wr_physical_addr,
+
+    output reg [EXE_WRITE_PORTS-1:0] wr_en_exe,
+    output reg [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe,
+    output reg [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe
+
 );
     import signals::*;
     function logic [DEPTH-1:0] generate_clear_mask(
@@ -56,8 +66,6 @@ module exe_module_pipeline #(
 
         return exe_clear_mask;
     endfunction
-
-
 
     logic [DEPTH-1:0] mask_exe;
     logic [EXE_PORT-1:0] enable_addr_exe;
@@ -110,7 +118,14 @@ module exe_module_pipeline #(
             unpredicted_jump <= 'b0;
             unpredicted_jump_release <= 1'b0;
 
+            wr_en_exe <= 'b0;
+            exe_wr_enable <= 'b0;
+
         end else begin
+
+            wr_en_exe <= 'b0;
+            exe_wr_enable <= 'b0;  // ensure no additional writes
+
             if (unpredicted_jump) begin
                 exe_clear_signal <= 1'b1;
                 exe_set_pt <= unpredicted_jump_entry_addr;
@@ -166,7 +181,15 @@ module exe_module_pipeline #(
                                 default: result = 0;  // Default case for unrecognized opcodes
                             endcase
 
-                            exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;
+                            exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;   // here, the result should be final, otherwise may cause problems
+
+                            if (!entries_o[addr_exe[i]].id_signals.mem_en) begin
+                                wr_en_exe[i] <= 1'b1;
+                                exe_wr_enable[i] <= 1'b1;
+                                exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
+                                wr_addr_exe[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
+                                wr_data_exe[i] <= result;
+                            end
                         // if ((entries_o[addr_exe[i]].if_signals.PC == 32'h80000074)) begin
                             //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // end
