@@ -310,6 +310,9 @@ module mem_module_pipeline #(
             4: begin
                 byte_mask = 4'b1111;
             end
+            default begin
+                byte_mask = 4'b1111;
+            end
         endcase
 
         return byte_mask;

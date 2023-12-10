@@ -5,7 +5,6 @@ module ReorderBuffer_pipeline #(
     parameter DEPTH = 64,
     parameter ROB_ADDR_WIDTH = 6,
     parameter NUM_REGS = 32,
-    parameter REG_ADDR_LEN = 5,
     parameter IF_PORT = 2,
     parameter ID_PORT = 2,
     parameter OF_PORT = 2,
@@ -47,8 +46,6 @@ module ReorderBuffer_pipeline #(
     input wire [DEPTH-1:0] current_status_id_enable,   //ID status updates enable
 
     // Interface with OF(Operands Fetch) stage, NEED ROB REG CONFLIC CONTROL.
-    output logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available,    //delivered ports for OF stage
-    output logic [OF_PORT-1:0] of_enable,   //status of the delivered ports for OF stage  
     input wire of_stall,     //whether the pipeline should be stalled.
     input wire is_of_ready,     // is OF ready for restart after pipeline reset
     input wire of_signals_t of_entries_i [DEPTH-1:0],   //OF generated signals
@@ -186,10 +183,6 @@ module ReorderBuffer_pipeline #(
     logic [DEPTH-1:0] is_at_wb;
 
 
-    logic [DEPTH-1:0][REG_ADDR_LEN-1:0] read1_conflict_control;
-    logic [DEPTH-1:0][REG_ADDR_LEN-1:0] read2_conflict_control;
-    logic [DEPTH-1:0][REG_ADDR_LEN-1:0] write1_conflict_control;
-
     generate
         for (genvar i3 = 0; i3 < DEPTH; i3++) begin : combine_signals2
             assign is_at_if[i3]=(current_status[i3] == IF);
@@ -198,27 +191,9 @@ module ReorderBuffer_pipeline #(
             assign is_at_exe[i3]=(current_status[i3] == EXE);
             assign is_at_mem[i3]=(current_status[i3] == MEM);
             assign is_at_wb[i3]=(current_status[i3] == WB);
-            assign read1_conflict_control[i3]=entries_o[i3].id_signals.rr_a;
-            assign read2_conflict_control[i3]=entries_o[i3].id_signals.rr_b;
-            assign write1_conflict_control[i3]=entries_o[i3].id_signals.rr_dst;
         end
     endgenerate
 
-    conflict_control_pipeline #(
-        .DEPTH(DEPTH),
-        .WIDTH(NUM_REGS),
-        .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
-        .REG_ADDR_LEN(REG_ADDR_LEN),
-        .NUM_OUTPUT_OF(OF_PORT)
-    ) conflict_control_inst (
-        .head(head),
-        .read1(read1_conflict_control),
-        .read2(read2_conflict_control),
-        .write1(write1_conflict_control),
-        .entrymask_read(is_at_of),
-        .output_ofenable(of_enable),    
-        .output_ports_of(of_ports_available)
-    );
 
     port_select_pipeline #(
         .DEPTH(DEPTH),

@@ -148,7 +148,7 @@ module tb;
   assign rd_addr = dut.rd_addr;
   assign rd_data = dut.rd_data;
 
-  logic [31:0] registers [0:31];
+  logic [31:0] registers [0:63];
   assign registers = dut.register_file_pipeline_inst.registers;
 
   logic [3:0] test_head;

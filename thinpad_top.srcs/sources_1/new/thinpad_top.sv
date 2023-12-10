@@ -183,6 +183,8 @@ module thinpad_top (
     localparam int PHYSICAL_REGISTERS_ADDR_LEN = 6;
     localparam int ASSIGN_PORTS = ID_PORT;
     localparam int SUBMIT_PORTS = WB_PORT;
+    localparam int EXE_WRITE_PORTS = EXE_PORT;
+    localparam int MEM_WRITE_PORTS = MEM_PORT;
 
 
     logic enable_IF;
@@ -311,9 +313,6 @@ wire is_pipeline_stall;
 logic [ROB_ADDR_WIDTH-1:0] head;
 
 
-
-logic re_map;
-
 logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out;
 
 logic [ASSIGN_PORTS-1:0] available_regs_enable;
@@ -327,7 +326,13 @@ logic [SUBMIT_PORTS-1:0] submit_regs_enable;
 logic [SUBMIT_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] submit_logical_regs;
 logic [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs;
 
+logic [NUM_PHYSICAL_REGISTERS-1:0] reg_valid;
 
+logic [EXE_WRITE_PORTS-1:0] exe_wr_enable;
+logic [EXE_WRITE_PORTS-1:0] exe_wr_physical_addr;
+
+logic [MEM_WRITE_PORTS-1:0] mem_wr_enable;
+logic [MEM_WRITE_PORTS-1:0] mem_wr_physical_addr;
 
 rename_register_mapping_table #(
     .NUM_LOGICAL_REGISTERS(NUM_LOGICAL_REGISTERS),
@@ -336,8 +341,11 @@ rename_register_mapping_table #(
     .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
     .ASSIGN_PORTS(ASSIGN_PORTS),
     .SUBMIT_PORTS(SUBMIT_PORTS),
+    .EXE_WRITE_PORTS(EXE_WRITE_PORTS),
+    .MEM_WRITE_PORTS(MEM_WRITE_PORTS),
     .DEPTH(DEPTH),
-    .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH)
+    .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
+    .OF_PORT(OF_PORT)
 ) rename_register_mapping_table_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -357,7 +365,19 @@ rename_register_mapping_table #(
 
     .entries_o(entries_o),
     .current_status(current_status),
-    .head(head)
+    .head(head),
+
+
+    .reg_valid(reg_valid),
+
+    .exe_wr_enable(exe_wr_enable),
+    .exe_wr_physical_addr(exe_wr_physical_addr),
+
+    .mem_wr_enable(mem_wr_enable),
+    .mem_wr_physical_addr(mem_wr_physical_addr),  
+
+    .of_ports_available(of_ports_available),    //delivered ports for OF stage
+    .of_enable(of_enable)   //status of the delivered ports for OF stage 
 );
 
 
@@ -368,7 +388,6 @@ ReorderBuffer_pipeline #(
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .NUM_REGS(NUM_REGS),
-    .REG_ADDR_LEN(REG_ADDR_LEN),
     .IF_PORT(IF_PORT),
     .ID_PORT(ID_PORT),
     .OF_PORT(OF_PORT),
@@ -404,8 +423,6 @@ ReorderBuffer_pipeline #(
 .current_status_id(current_status_id),
 .current_status_id_enable(current_status_id_enable),
 
-.of_ports_available(of_ports_available),
-.of_enable(of_enable),
 .of_stall(of_stall),
 .is_of_ready(is_of_ready),
 .of_entries_i(of_entries_i),
@@ -568,15 +585,15 @@ id_module_pipeline #(
 
 
 logic [NUM_WRITE_PORTS-1:0] wr_en;
-logic [NUM_WRITE_PORTS-1:0][REG_ADDR_WIDTH-1:0] wr_addr;
+logic [NUM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr;
 logic [NUM_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data;
-logic [NUM_READ_PORTS-1:0][REG_ADDR_WIDTH-1:0] rd_addr;
+logic [NUM_READ_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] rd_addr;
 logic [NUM_READ_PORTS-1:0][REG_DATA_WIDTH-1:0] rd_data;
 
 
 register_file_pipeline #(
     .REG_DATA_WIDTH(DATA_WIDTH),          // Bitwidth of data
-    .REG_ADDR_WIDTH(REG_ADDR_LEN),           // Bitwidth of address, supports 2^N registers by default
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),           // Bitwidth of address, supports 2^N registers by default
     .NUM_READ_PORTS(OF_PORT * 2),       // Number of read ports
     .NUM_WRITE_PORTS(WB_PORT)      // Number of write ports
 ) register_file_pipeline_inst (
@@ -596,7 +613,7 @@ of_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .OF_PORT(OF_PORT),
     .REG_DATA_WIDTH(DATA_WIDTH),         
-    .REG_ADDR_WIDTH(REG_ADDR_LEN)    
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN)    
 ) of_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -624,7 +641,6 @@ wb_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .WB_PORT(WB_PORT),
     .REG_DATA_WIDTH(DATA_WIDTH),         
-    .REG_ADDR_WIDTH(REG_ADDR_LEN),
     .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
     .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
     .SUBMIT_PORTS(SUBMIT_PORTS)  

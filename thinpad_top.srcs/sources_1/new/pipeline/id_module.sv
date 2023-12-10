@@ -190,6 +190,7 @@ module id_module_pipeline #(
             assign_regs_enable <= 'b0;
 
         end else begin
+            assign_regs_enable <= 'b0;
             if (is_pipeline_stall) begin
                 // $display("stall_id");
                 for (int i = 0; i < NUM_LOGICAL_REGISTERS; i++) begin
@@ -205,9 +206,9 @@ module id_module_pipeline #(
                 is_id_ready <= 1'b0;
                 addr_id = id_ports_available;
                 enable_addr_id = id_enable;
-                assign_regs_enable <= 'b0;
 
                 for (int i=0;i<ID_PORT;i++) begin
+                    //$display("ID: %d %d %d", i, available_regs_enable[i], available_physical_regs[i]);
                     if (enable_addr_id[i]) begin
                         if (available_regs_enable[i]) begin
                             id_signals_t tmp_id_signals = rv32i_decoder_func(entries_o[addr_id[i]].if_signals.inst);
@@ -220,6 +221,7 @@ module id_module_pipeline #(
                                 latest_table[tmp_id_signals.rr_dst] = available_physical_regs[i];
                                 assign_regs_enable[i] <= 1'b1;
                                 assign_physical_regs[i] <= available_physical_regs[i];
+                                // $display("ID: %d %d", i, available_physical_regs[i]);
 
                             end else begin
                                 tmp_id_signals.dst_rf_tag = 'b0;
