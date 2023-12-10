@@ -168,10 +168,22 @@ module thinpad_top (
     localparam int MEM_PORT = 2;
     localparam int WB_PORT = 2;
 
+    localparam int CACHE_WAYS = 4;
+    localparam int CACHE_WIDTH = 32;
+    localparam int CACHE_ENABLE = 1;
+
     localparam int REG_DATA_WIDTH = DATA_WIDTH;          // Bitwidth of data
     localparam int REG_ADDR_WIDTH = REG_ADDR_LEN;           // Bitwidth of address, supports 2^N registers by default
     localparam int NUM_READ_PORTS = OF_PORT * 2;       // Number of read ports
     localparam int NUM_WRITE_PORTS = WB_PORT;       // Number of write ports
+
+    localparam int NUM_LOGICAL_REGISTERS = 32;
+    localparam int NUM_PHYSICAL_REGISTERS = 64;
+    localparam int LOGICAL_REGISTERS_ADDR_LEN = 5;
+    localparam int PHYSICAL_REGISTERS_ADDR_LEN = 6;
+    localparam int ASSIGN_PORTS = ID_PORT;
+    localparam int SUBMIT_PORTS = WB_PORT;
+
 
     logic enable_IF;
     logic write_IF;
@@ -240,6 +252,8 @@ logic [DEPTH-1:0][PC_WIDTH-1:0] PC_IF;
 logic [DEPTH-1:0] PC_ready;
 logic [DEPTH-1:0] is_branch;
 
+logic i_cache_reset;
+
 logic [ID_PORT-1:0][ROB_ADDR_WIDTH-1:0] id_ports_available;
 logic [ID_PORT-1:0] id_enable;
 logic id_clear_signal;
@@ -290,10 +304,63 @@ stage_t [DEPTH-1:0] current_status_wb;
 logic [DEPTH-1:0] current_status_wb_enable;
 
 riscv_pipeline_signals_t entries_o [DEPTH-1:0];
+stage_t [DEPTH-1:0] current_status;
 
 wire is_ready;
 wire is_pipeline_stall;
 logic [ROB_ADDR_WIDTH-1:0] head;
+
+
+
+logic re_map;
+
+logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out;
+
+logic [ASSIGN_PORTS-1:0] available_regs_enable;
+logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] available_physical_regs;
+
+logic [ASSIGN_PORTS-1:0] assign_regs_enable;
+logic [ASSIGN_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] assign_logical_regs;
+logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] assign_physical_regs;
+
+logic [SUBMIT_PORTS-1:0] submit_regs_enable;
+logic [SUBMIT_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] submit_logical_regs;
+logic [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs;
+
+
+
+rename_register_mapping_table #(
+    .NUM_LOGICAL_REGISTERS(NUM_LOGICAL_REGISTERS),
+    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS),
+    .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .ASSIGN_PORTS(ASSIGN_PORTS),
+    .SUBMIT_PORTS(SUBMIT_PORTS),
+    .DEPTH(DEPTH),
+    .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH)
+) rename_register_mapping_table_inst (
+    .clk(global_clock),
+    .reset(global_reset),
+    .re_map(is_pipeline_stall),
+    .latest_table_out(latest_table_out),
+
+    .available_regs_enable(available_regs_enable),
+    .available_physical_regs(available_physical_regs),
+
+    .assign_regs_enable(assign_regs_enable),
+    // .assign_logical_regs(assign_logical_regs),
+    .assign_physical_regs(assign_physical_regs),
+
+    .submit_regs_enable(submit_regs_enable),
+    .submit_logical_regs(submit_logical_regs),
+    .submit_physical_regs(submit_physical_regs),
+
+    .entries_o(entries_o),
+    .current_status(current_status),
+    .head(head)
+);
+
+
 
 
 ReorderBuffer_pipeline #(
@@ -376,6 +443,7 @@ ReorderBuffer_pipeline #(
 .current_status_wb_enable(current_status_wb_enable),
 
 .entries_o(entries_o),
+.current_status(current_status),
 .is_ready(is_ready),
 .is_pipeline_stall(is_pipeline_stall),
 .head(head)
@@ -387,7 +455,10 @@ if_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .IF_PORT(IF_PORT),
     .ADDR_WIDTH(32), // Address width
-    .DATA_WIDTH(32)  // Data width
+    .DATA_WIDTH(32),  // Data width
+    .CACHE_WAYS(CACHE_WAYS),
+    .CACHE_WIDTH(CACHE_WIDTH),
+    .CACHE_ENABLE(CACHE_ENABLE)
 ) if_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -408,6 +479,7 @@ if_module_pipeline #(
     .entries_o(entries_o),
     .is_ready(is_ready),
     .is_pipeline_stall(is_pipeline_stall),
+    .i_cache_reset(i_cache_reset),
     .enable_IF(enable_IF),
     .write_IF(write_IF),
     .address_IF(address_IF),
@@ -455,7 +527,12 @@ id_module_pipeline #(
     .PC_WIDTH(PC_WIDTH),
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
-    .ID_PORT(ID_PORT)
+    .ID_PORT(ID_PORT),
+    .NUM_LOGICAL_REGISTERS(NUM_LOGICAL_REGISTERS),
+    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS),
+    .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .ASSIGN_PORTS(ASSIGN_PORTS)
 ) id_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -477,7 +554,16 @@ id_module_pipeline #(
     .entries_o(entries_o),
 
     .is_ready(is_ready),
-    .is_pipeline_stall(is_pipeline_stall)
+    .is_pipeline_stall(is_pipeline_stall),
+
+    .latest_table_out(latest_table_out),
+
+    .available_regs_enable(available_regs_enable),
+    .available_physical_regs(available_physical_regs),
+
+    .assign_regs_enable(assign_regs_enable),
+    // .assign_logical_regs(assign_logical_regs),
+    .assign_physical_regs(assign_physical_regs)
 );
 
 
@@ -538,7 +624,10 @@ wb_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .WB_PORT(WB_PORT),
     .REG_DATA_WIDTH(DATA_WIDTH),         
-    .REG_ADDR_WIDTH(REG_ADDR_LEN)    
+    .REG_ADDR_WIDTH(REG_ADDR_LEN),
+    .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .SUBMIT_PORTS(SUBMIT_PORTS)  
 ) wb_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -558,7 +647,11 @@ wb_module_pipeline #(
 
     .wr_addr(wr_addr),
     .wr_data(wr_data),
-    .wr_en(wr_en)
+    .wr_en(wr_en),
+
+    .submit_regs_enable(submit_regs_enable),
+    .submit_logical_regs(submit_logical_regs),
+    .submit_physical_regs(submit_physical_regs)
 );
 
 exe_module_pipeline #(
@@ -581,6 +674,7 @@ exe_module_pipeline #(
     .exe_entries_i(exe_entries_i),
     .current_status_exe(current_status_exe),
     .current_status_exe_enable(current_status_exe_enable),
+    .i_cache_reset(i_cache_reset),
     .entries_o(entries_o),
     .is_ready(is_ready),
     .is_pipeline_stall(is_pipeline_stall),

@@ -26,6 +26,8 @@ module exe_module_pipeline #(
 
     input riscv_pipeline_signals_t entries_o [DEPTH-1:0],
 
+    output logic i_cache_reset,
+
     // Status signals
     input wire is_ready,
     input wire is_pipeline_stall,
@@ -97,6 +99,7 @@ module exe_module_pipeline #(
     always_ff @(posedge clk) begin
         // current_status_exe_enable <= mask_exe;
         if (reset) begin
+            i_cache_reset <= 1'b0;
             is_exe_ready <= 1'b0;
             enable_addr_exe <= 'b0;
             exe_clear_signal <= 1'b0;

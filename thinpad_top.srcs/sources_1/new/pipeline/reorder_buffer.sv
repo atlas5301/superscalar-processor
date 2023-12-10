@@ -89,6 +89,7 @@ module ReorderBuffer_pipeline #(
     input wire [DEPTH-1:0] current_status_wb_enable,   //WB status updates enable
 
     output riscv_pipeline_signals_t entries_o [DEPTH-1:0],
+    output stage_t [DEPTH-1:0] current_status,
 
 
 
@@ -117,7 +118,6 @@ module ReorderBuffer_pipeline #(
 
     localparam NUM_ARRAYS = 8;
 
-    stage_t [DEPTH-1:0] current_status;
     stage_t [DEPTH-1:0] status;
     logic [NUM_ARRAYS-1:0][DEPTH-1:0] masks;
     stage_t [NUM_ARRAYS-1:0][DEPTH-1:0] arrays;

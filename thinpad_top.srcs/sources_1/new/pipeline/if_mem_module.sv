@@ -37,6 +37,7 @@ module if_module_pipeline #(
     input wire is_ready,
     input wire is_pipeline_stall,
 
+    input wire i_cache_reset,
 
     output logic enable_IF,
     output logic write_IF,
@@ -61,6 +62,9 @@ module if_module_pipeline #(
     reg [PC_WIDTH-1:0] cache_wr_pc;
     reg [DATA_WIDTH-1:0] cache_wr_inst;
 
+    logic final_cache_reset;
+    assign final_cache_reset = reset | i_cache_reset;
+
 
     inst_cache_blocks #(
         .PC_WIDTH(PC_WIDTH),
@@ -71,7 +75,7 @@ module if_module_pipeline #(
         .CACHE_ENABLE(CACHE_ENABLE)
     ) inst_cache(
         .clk(clk),
-        .reset(reset),
+        .reset(final_cache_reset),
         .read_pc(cache_read_pc),
         .check_valid(cache_check_valid),
         .o_inst(cache_o_inst),

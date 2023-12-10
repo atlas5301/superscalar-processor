@@ -3,7 +3,12 @@ module id_module_pipeline #(
     parameter PC_WIDTH = 32,
     parameter DEPTH = 64,
     parameter ROB_ADDR_WIDTH = 6,
-    parameter ID_PORT = 2
+    parameter ID_PORT = 2,
+    parameter int NUM_LOGICAL_REGISTERS = 32,
+    parameter int NUM_PHYSICAL_REGISTERS = 64,
+    parameter int LOGICAL_REGISTERS_ADDR_LEN = 5,
+    parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
+    parameter int ASSIGN_PORTS = 4
 ) (
     input wire clk,
     input wire reset,
@@ -26,7 +31,16 @@ module id_module_pipeline #(
 
     // Status signals
     input wire is_ready,
-    input wire is_pipeline_stall
+    input wire is_pipeline_stall,
+
+    input logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out,
+
+    input logic [ASSIGN_PORTS-1:0] available_regs_enable,
+    input logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] available_physical_regs,
+
+    output logic [ASSIGN_PORTS-1:0] assign_regs_enable,
+    // output logic [ASSIGN_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] assign_logical_regs,
+    output logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] assign_physical_regs
 
 );
     import signals::*;
@@ -84,6 +98,9 @@ module id_module_pipeline #(
                     3'b111: begin
                         decoded.alu_op = AND;
                     end
+                    default: begin
+                        decoded.alu_op = ADD;
+                    end
                 endcase
                 decoded.rr_a = rs1;
                 decoded.rr_dst = rd;
@@ -110,6 +127,9 @@ module id_module_pipeline #(
                     3'b010: begin
                         decoded.mem_len = 4;
                     end
+                    default: begin
+                        decoded.mem_len = 1;
+                    end
                 endcase
                 decoded.mem_en = 1;
                 decoded.mem_write = 1;
@@ -132,6 +152,8 @@ module id_module_pipeline #(
         return decoded;
     endfunction
 
+
+    logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table;
 
     logic [DEPTH-1:0] mask_id;
     logic [ID_PORT-1:0] enable_addr_id;
@@ -162,9 +184,17 @@ module id_module_pipeline #(
             id_next_pc <= 'b0;
             current_status_id <= '{DEPTH{IF}};
 
+            for (int i = 0; i < NUM_LOGICAL_REGISTERS; i++) begin
+                latest_table[i] = '0;
+            end
+            assign_regs_enable <= 'b0;
+
         end else begin
             if (is_pipeline_stall) begin
                 // $display("stall_id");
+                for (int i = 0; i < NUM_LOGICAL_REGISTERS; i++) begin
+                    latest_table[i] = latest_table_out[i];
+                end        
                 is_id_ready <= 1'b1;
                 enable_addr_id <= 'b0;
                 if (is_ready) begin
@@ -175,12 +205,32 @@ module id_module_pipeline #(
                 is_id_ready <= 1'b0;
                 addr_id = id_ports_available;
                 enable_addr_id = id_enable;
+                assign_regs_enable <= 'b0;
 
                 for (int i=0;i<ID_PORT;i++) begin
                     if (enable_addr_id[i]) begin
-                        id_entries_i[addr_id[i]] <= rv32i_decoder_func(entries_o[addr_id[i]].if_signals.inst);
-                        //$display("IDPC: %h",entries_o[addr_id[i]].if_signals.PC);
-                        current_status_id[addr_id[i]] <= OF;
+                        if (available_regs_enable[i]) begin
+                            id_signals_t tmp_id_signals = rv32i_decoder_func(entries_o[addr_id[i]].if_signals.inst);
+
+                            tmp_id_signals.src_rf_tag_a = latest_table[tmp_id_signals.rr_a];
+                            tmp_id_signals.src_rf_tag_b = latest_table[tmp_id_signals.rr_b];                            
+
+                            if (tmp_id_signals.rr_dst != 0) begin
+                                tmp_id_signals.dst_rf_tag = available_physical_regs[i];
+                                latest_table[tmp_id_signals.rr_dst] = available_physical_regs[i];
+                                assign_regs_enable[i] <= 1'b1;
+                                assign_physical_regs[i] <= available_physical_regs[i];
+
+                            end else begin
+                                tmp_id_signals.dst_rf_tag = 'b0;
+                            end
+
+                            id_entries_i[addr_id[i]] <= tmp_id_signals;
+                            //$display("IDPC: %h",entries_o[addr_id[i]].if_signals.PC);
+                            current_status_id[addr_id[i]] <= OF;
+                        end else begin
+                            current_status_id[addr_id[i]] <= ID;
+                        end
                     end
                 end
 

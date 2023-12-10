@@ -129,7 +129,11 @@ module wb_module_pipeline  #(
     parameter ROB_ADDR_WIDTH = 6,
     parameter WB_PORT = 2,
     parameter REG_DATA_WIDTH = 32,         
-    parameter REG_ADDR_WIDTH = 5 
+    parameter REG_ADDR_WIDTH = 5,
+
+    parameter int LOGICAL_REGISTERS_ADDR_LEN = 5,
+    parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
+    parameter int SUBMIT_PORTS = 4
 ) (
 
     input wire clk,
@@ -151,7 +155,11 @@ module wb_module_pipeline  #(
 
     output reg [WB_PORT-1:0][REG_ADDR_WIDTH-1:0] wr_addr,
     output reg [WB_PORT-1:0][REG_DATA_WIDTH-1:0] wr_data,
-    output reg [WB_PORT-1:0] wr_en
+    output reg [WB_PORT-1:0] wr_en,
+
+    output logic [SUBMIT_PORTS-1:0] submit_regs_enable,
+    output logic [SUBMIT_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] submit_logical_regs,
+    output logic [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs
 );
     import signals::*;
     logic [DEPTH-1:0] mask_wb;
@@ -181,6 +189,7 @@ module wb_module_pipeline  #(
             wr_en <= 'b0;
             current_status_wb <= '{DEPTH{IF}};
             next_head <= 0;
+            submit_regs_enable <= 'b0;
 
         end else begin
             if (is_pipeline_stall) begin
@@ -206,6 +215,11 @@ module wb_module_pipeline  #(
                         next_head <= (addr_wb[i]+1)%DEPTH;
 
                         debug_PC <= entries_o[addr_wb[i]].if_signals.PC;
+
+                        submit_regs_enable[i] <= 1'b1;
+                        submit_logical_regs[i] <= entries_o[addr_wb[i]].id_signals.rr_dst;
+                        submit_physical_regs[i] <= entries_o[addr_wb[i]].id_signals.dst_rf_tag;
+
                     end else begin
                         break;
                     end
