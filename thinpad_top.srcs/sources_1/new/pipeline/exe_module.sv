@@ -8,7 +8,8 @@ module exe_module_pipeline #(
     parameter REG_DATA_WIDTH = 32,
     parameter int EXE_WRITE_PORTS = 4, 
     parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
-    parameter int NUM_PHYSICAL_REGISTERS = 64
+    parameter int NUM_PHYSICAL_REGISTERS = 64,
+    parameter int CACHE_CYCLES = 2
 ) (
     input wire clk,
     input wire reset,
@@ -41,7 +42,9 @@ module exe_module_pipeline #(
 
     output reg [EXE_WRITE_PORTS-1:0] wr_en_exe,
     output reg [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe,
-    output reg [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe
+    output reg [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe,
+
+    output logic [NUM_PHYSICAL_REGISTERS-1:0] is_cached_exe
 
 );
     import signals::*;
@@ -65,6 +68,10 @@ module exe_module_pipeline #(
         // Rotate the mask by 'addr' positions
         exe_clear_mask = (tmpmask << tmpaddr) | (tmpmask >> (DEPTH - tmpaddr));
 
+        if (tmpaddr == head) begin
+            exe_clear_mask = 'b0;
+        end
+
         return exe_clear_mask;
     endfunction
 
@@ -83,22 +90,42 @@ module exe_module_pipeline #(
     logic [PC_WIDTH-1:0] next_pc;
     logic branch_taken;
 
-    logic [REG_DATA_WIDTH-1:0] a,b,result;
+    logic [REG_DATA_WIDTH-1:0] a,b,result, tmpb;
     logic [31:0] debug_PC;
 
     logic unpredicted_jump_release;
 
 
-    logic [EXE_WRITE_PORTS-1:0] wr_en_exe_cache0;
-    logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe_cache0;
-    logic [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe_cache_0;
+    logic [CACHE_CYCLES-1:0][EXE_WRITE_PORTS-1:0] wr_en_exe_cache;
+    logic [CACHE_CYCLES-1:0][EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe_cache;
+    logic [CACHE_CYCLES-1:0][EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe_cache;
 
-    logic [EXE_WRITE_PORTS-1:0] wr_en_exe_cache1;
-    logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe_cache1;
-    logic [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe_cache_1;
+    logic [NUM_PHYSICAL_REGISTERS-1:0] is_cached;
+    logic [NUM_PHYSICAL_REGISTERS-1:0][REG_DATA_WIDTH-1:0] cached_value;
 
     // logic [EXE_WRITE_PORTS-1:0] 
+    always_comb begin
+        is_cached = 'b0;
+        for (int i=0; i< NUM_PHYSICAL_REGISTERS; i++) begin
+            cached_value[i] = 'b0;
+        end
 
+        for (int i=0; i< CACHE_CYCLES; i++) begin
+            for (int j=0; j< EXE_WRITE_PORTS; j++) begin
+                if (wr_en_exe_cache[i][j]) begin
+                    cached_value[wr_addr_exe_cache[i][j]] = wr_data_exe_cache[i][j];
+                end
+            end
+        end
+
+        is_cached[0] = 1'b1;
+        cached_value[0] = 'b0;
+
+        // is_cached = 'b0;
+
+        is_cached_exe = is_cached;
+
+    end
 
 
     // assign current_status_exe_enable = mask_exe;
@@ -120,6 +147,14 @@ module exe_module_pipeline #(
 
     always_ff @(posedge clk) begin
         // current_status_exe_enable <= mask_exe;
+
+        for (int i=0; i< CACHE_CYCLES-1; i++) begin
+            for (int j=0; j< EXE_WRITE_PORTS; j++) begin
+                wr_en_exe_cache[i+1][j] <= wr_en_exe_cache[i][j];
+                wr_addr_exe_cache[i+1][j] <= wr_addr_exe_cache[i][j];
+                wr_data_exe_cache[i+1][j] <= wr_data_exe_cache[i][j];
+            end
+        end
         if (reset) begin
             i_cache_reset <= 1'b0;
             is_exe_ready <= 1'b0;
@@ -135,10 +170,19 @@ module exe_module_pipeline #(
             wr_en_exe <= 'b0;
             exe_wr_enable <= 'b0;
 
+            for (int i=0; i< CACHE_CYCLES; i++) begin
+                for (int j=0; j< EXE_WRITE_PORTS; j++) begin
+                    wr_en_exe_cache[i][j] <= 1'b0;
+                end
+            end
+
         end else begin
 
             wr_en_exe <= 'b0;
             exe_wr_enable <= 'b0;  // ensure no additional writes
+            for (int j=0; j<EXE_WRITE_PORTS;j++) begin
+                wr_en_exe_cache[0][j] <= 1'b0;
+            end
 
             if (unpredicted_jump) begin
                 exe_clear_signal <= 1'b1;
@@ -153,6 +197,11 @@ module exe_module_pipeline #(
                 unpredicted_jump_release <= 1'b1;
             end else begin
                 if (is_pipeline_stall) begin
+                    for (int i=0; i< CACHE_CYCLES; i++) begin
+                        for (int j=0; j< EXE_WRITE_PORTS; j++) begin
+                            wr_en_exe_cache[i][j] <= 1'b0;
+                        end
+                    end
                     // $display("stall_exe");
                     is_exe_ready <= 1'b1;
                     enable_addr_exe <= 'b0;
@@ -177,9 +226,22 @@ module exe_module_pipeline #(
 
                     for (int i=0;i<EXE_PORT;i++) begin
                         if (enable_addr_exe[i]) begin
-                            a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
+                            if (entries_o[addr_exe[i]].of_signals.prepared_a) begin
+                                a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
+                            end else begin
+                                a = cached_value[entries_o[addr_exe[i]].id_signals.src_rf_tag_a];
+                            end
+
+                            if (entries_o[addr_exe[i]].of_signals.prepared_b) begin
+                                tmpb = entries_o[addr_exe[i]].of_signals.rf_rdata_b;
+                            end else begin
+                                tmpb = cached_value[entries_o[addr_exe[i]].id_signals.src_rf_tag_b];
+                            end
+
+                            exe_entries_i[addr_exe[i]].final_rf_rdata_b <= tmpb;
+
                             if (entries_o[addr_exe[i]].id_signals.use_rs2) begin
-                                b = entries_o[addr_exe[i]].of_signals.rf_rdata_b;
+                                b = tmpb;
                             end else begin
                                 b = entries_o[addr_exe[i]].id_signals.immediate;
                             end
@@ -202,6 +264,10 @@ module exe_module_pipeline #(
                                 exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
                                 wr_addr_exe[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
                                 wr_data_exe[i] <= result;
+
+                                wr_en_exe_cache[0][i] <= 1'b1;
+                                wr_addr_exe_cache[0][i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
+                                wr_data_exe_cache[0][i] <= result;
                             end
                         // if ((entries_o[addr_exe[i]].if_signals.PC == 32'h80000074)) begin
                             //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);

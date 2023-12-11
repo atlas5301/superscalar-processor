@@ -444,7 +444,7 @@ module mem_module_pipeline #(
                         enable_MEM <= 1'b1;
                         write_MEM <= entries_o[addresses[0]].id_signals.mem_write;
                         address_MEM <= entries_o[addresses[0]].exe_signals.rf_wdata_exe;
-                        write_data_MEM <= entries_o[addresses[0]].of_signals.rf_rdata_b;
+                        write_data_MEM <= entries_o[addresses[0]].exe_signals.final_rf_rdata_b;
                         sel_MEM = generate_byte_mask(entries_o[addresses[0]].exe_signals.rf_wdata_exe, entries_o[addresses[0]].id_signals.mem_len);
                         sel_MEM_DEBUG = sel_MEM;
                         state_MEM <= WORKING;

@@ -51,6 +51,7 @@ package signals;
     // EXE Stage
     typedef struct {
         logic [31:0] rf_wdata_exe;  //in load/store instructions, will be used to store final addr
+        logic [31:0] final_rf_rdata_b;
     } exe_signals_t;
 
     // MEM Stage

@@ -39,6 +39,7 @@ module rename_register_mapping_table #(
 
     input wire [EXE_WRITE_PORTS-1:0] exe_wr_enable,
     input wire [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] exe_wr_physical_addr,
+    input wire [NUM_PHYSICAL_REGISTERS-1:0] is_cached_exe,
 
     input wire [MEM_WRITE_PORTS-1:0] mem_wr_enable,
     input wire [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_addr,  
@@ -224,9 +225,9 @@ module rename_register_mapping_table #(
 
         for (int i = 0; i < DEPTH; i++) begin
             if (is_at_exe[i]) begin
-                exe_available_a[i] = (entries_o[i].of_signals.prepared_a);
-                exe_available_b[i] = (entries_o[i].of_signals.prepared_b);
-                exe_available[i] = exe_available_a[i] && exe_available_b[i];
+                exe_available_a[i] = (entries_o[i].of_signals.prepared_a) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_a];
+                exe_available_b[i] = (entries_o[i].of_signals.prepared_b) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_b];
+                exe_available[i] = (exe_available_a[i] && exe_available_b[i]);
 
             end
         end

@@ -333,6 +333,8 @@ logic [NUM_PHYSICAL_REGISTERS-1:0] reg_valid;
 logic [EXE_WRITE_PORTS-1:0] exe_wr_enable;
 logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] exe_wr_physical_addr;
 
+logic [NUM_PHYSICAL_REGISTERS-1:0] is_cached_exe;
+
 logic [MEM_WRITE_PORTS-1:0] mem_wr_enable;
 logic [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_addr;
 
@@ -385,7 +387,8 @@ rename_register_mapping_table #(
     .is_not_at_of(is_not_at_of),
 
     .exe_ports_available(exe_ports_available),    //delivered ports for EXE stage
-    .exe_enable(exe_enable)   //status of the delivered ports for EXE stage  
+    .exe_enable(exe_enable),   //status of the delivered ports for EXE stage  
+    .is_cached_exe(is_cached_exe)
 );
 
 
@@ -742,7 +745,9 @@ exe_module_pipeline #(
 
     .wr_en_exe(wr_en_exe),
     .wr_addr_exe(wr_addr_exe),
-    .wr_data_exe(wr_data_exe)
+    .wr_data_exe(wr_data_exe),
+
+    .is_cached_exe(is_cached_exe)
 );
 
 
