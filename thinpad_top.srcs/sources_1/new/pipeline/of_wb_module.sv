@@ -13,9 +13,9 @@ module of_module_pipeline #(
     input wire reset,
 
     input wire [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available,    //delivered ports for OF stage
-    input logic [OF_PORT-1:0] of_port_is_b,
+    input wire [OF_PORT-1:0] of_port_is_b,
     input wire [OF_PORT-1:0] of_enable,   //status of the delivered ports for OF stage 
-    input logic [DEPTH-1:0] is_not_at_of,
+    input wire [DEPTH-1:0] is_not_at_of,
     output logic of_stall,     //whether the pipeline should be stalled.  
     output logic is_of_ready,     // is OF ready for restart after pipeline reset
     output of_signals_t of_entries_i [DEPTH-1:0],   //OF generated signals
