@@ -7,7 +7,8 @@ module exe_module_pipeline #(
     parameter EXE_PORT = 2,
     parameter REG_DATA_WIDTH = 32,
     parameter int EXE_WRITE_PORTS = 4, 
-    parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6
+    parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
+    parameter int NUM_PHYSICAL_REGISTERS = 64
 ) (
     input wire clk,
     input wire reset,
@@ -86,6 +87,19 @@ module exe_module_pipeline #(
     logic [31:0] debug_PC;
 
     logic unpredicted_jump_release;
+
+
+    logic [EXE_WRITE_PORTS-1:0] wr_en_exe_cache0;
+    logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe_cache0;
+    logic [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe_cache_0;
+
+    logic [EXE_WRITE_PORTS-1:0] wr_en_exe_cache1;
+    logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe_cache1;
+    logic [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe_cache_1;
+
+    // logic [EXE_WRITE_PORTS-1:0] 
+
+
 
     // assign current_status_exe_enable = mask_exe;
 

@@ -181,23 +181,27 @@ module rename_register_mapping_table #(
 
         for (int i = 0; i < DEPTH; i++) begin
             int new_index = (i + head) % DEPTH; // Calculate new index
-            if (output_readenable_a[new_index]) begin
-                if (current_of_output_port == OF_PORT)
-                    break;
+            if (output_readenable_a[new_index] || output_readenable_b[new_index]) begin
+                if (output_readenable_a[new_index]) begin
+                    if (current_of_output_port == OF_PORT)
+                        break;
 
-                of_enable[current_of_output_port] = 1;
-                of_ports_available[current_of_output_port] = new_index;
-                of_port_is_b[current_of_output_port] = 0;
+                    of_enable[current_of_output_port] = 1;
+                    of_ports_available[current_of_output_port] = new_index;
+                    of_port_is_b[current_of_output_port] = 0;
+                    // current_of_output_port += 1;
+                end
                 current_of_output_port += 1;
-            end
 
-            if (output_readenable_b[new_index]) begin
-                if (current_of_output_port == OF_PORT)
-                    break;
+                if (output_readenable_b[new_index]) begin
+                    if (current_of_output_port == OF_PORT)
+                        break;
 
-                of_enable[current_of_output_port] = 1;
-                of_ports_available[current_of_output_port] = new_index;
-                of_port_is_b[current_of_output_port] = 1;
+                    of_enable[current_of_output_port] = 1;
+                    of_ports_available[current_of_output_port] = new_index;
+                    of_port_is_b[current_of_output_port] = 1;
+                    // current_of_output_port += 1;
+                end
                 current_of_output_port += 1;
             end
         end

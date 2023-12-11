@@ -163,7 +163,7 @@ module thinpad_top (
     localparam int REG_ADDR_LEN = 5;
     localparam int IF_PORT = 2;
     localparam int ID_PORT = 2;
-    localparam int OF_PORT = 4;
+    localparam int OF_PORT = 6;
     localparam int EXE_PORT = 2;
     localparam int MEM_PORT = 2;
     localparam int WB_PORT = 2;
@@ -715,7 +715,8 @@ exe_module_pipeline #(
     .EXE_PORT(EXE_PORT),
     .REG_DATA_WIDTH(DATA_WIDTH),
     .EXE_WRITE_PORTS(EXE_WRITE_PORTS), 
-    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN)      
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS)      
 ) exe_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
