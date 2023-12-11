@@ -170,7 +170,6 @@ module exe_module_pipeline #(
                                 b = entries_o[addr_exe[i]].id_signals.immediate;
                             end
 
-
                             case (entries_o[addr_exe[i]].id_signals.alu_op)
                                 ADD: result = a + b;
                                 SUB: result = a - b;
@@ -183,7 +182,7 @@ module exe_module_pipeline #(
 
                             exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;   // here, the result should be final, otherwise may cause problems
 
-                            if (!entries_o[addr_exe[i]].id_signals.mem_en) begin
+                            if (~entries_o[addr_exe[i]].id_signals.mem_en) begin
                                 wr_en_exe[i] <= 1'b1;
                                 exe_wr_enable[i] <= 1'b1;
                                 exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
@@ -228,7 +227,6 @@ module exe_module_pipeline #(
                                 end
                             end
                             current_status_exe[addr_exe[i]] <= MEM;
-
                                 
                         end
                     end

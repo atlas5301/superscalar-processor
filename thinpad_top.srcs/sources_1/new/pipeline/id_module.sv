@@ -229,7 +229,7 @@ module id_module_pipeline #(
 
                             id_entries_i[addr_id[i]] <= tmp_id_signals;
                             //$display("IDPC: %h",entries_o[addr_id[i]].if_signals.PC);
-                            current_status_id[addr_id[i]] <= OF;
+                            current_status_id[addr_id[i]] <= EXE;
                         end else begin
                             current_status_id[addr_id[i]] <= ID;
                         end

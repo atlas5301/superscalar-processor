@@ -43,7 +43,9 @@ package signals;
         logic [31:0] rf_rdata_a;    //in load/store instructions, will be used to store original addr
         logic [31:0] rf_rdata_b;    //in store instructions, will be used to store the data to write
         logic prepared_a;
+        logic pending_a;
         logic prepared_b;
+        logic pending_b;
     } of_signals_t;
 
     // EXE Stage

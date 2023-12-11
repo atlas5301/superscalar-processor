@@ -53,8 +53,8 @@ module ReorderBuffer_pipeline #(
     input wire [DEPTH-1:0] current_status_of_enable,   //OF status updates enable
 
     // Interface with EXE stage, CONFLICT CONTROL IN EXE
-    output logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
-    output logic [EXE_PORT-1:0] exe_enable,   //status of the delivered ports for EXE stage
+    // output logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
+    // output logic [EXE_PORT-1:0] exe_enable,   //status of the delivered ports for EXE stage
     input wire exe_clear_signal,     //whether instructions should be emptied from buffer.
     input wire [DEPTH-1:0] exe_clear_mask,    //the address of instructions in ROB to be emptied.
     input wire [ROB_ADDR_WIDTH-1:0] exe_set_pt,   //the entry to set next_PC
@@ -217,16 +217,16 @@ module ReorderBuffer_pipeline #(
         .output_ports(id_ports_available)
     );
 
-    port_select_pipeline #(
-        .DEPTH(DEPTH),
-        .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
-        .NUM_OUTPUT(EXE_PORT)
-    ) port_select_exe (
-        .head(head),
-        .enable(is_at_exe),
-        .output_enable(exe_enable),
-        .output_ports(exe_ports_available)
-    );
+    // port_select_pipeline #(
+    //     .DEPTH(DEPTH),
+    //     .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
+    //     .NUM_OUTPUT(EXE_PORT)
+    // ) port_select_exe (
+    //     .head(head),
+    //     .enable(is_at_exe),
+    //     .output_enable(exe_enable),
+    //     .output_ports(exe_ports_available)
+    // );
 
     port_select_first_n_pipeline_with_ignore_mask #(
         .DEPTH(DEPTH),

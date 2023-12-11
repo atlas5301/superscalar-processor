@@ -163,7 +163,7 @@ module thinpad_top (
     localparam int REG_ADDR_LEN = 5;
     localparam int IF_PORT = 2;
     localparam int ID_PORT = 2;
-    localparam int OF_PORT = 2;
+    localparam int OF_PORT = 4;
     localparam int EXE_PORT = 2;
     localparam int MEM_PORT = 2;
     localparam int WB_PORT = 2;
@@ -174,7 +174,7 @@ module thinpad_top (
 
     localparam int REG_DATA_WIDTH = DATA_WIDTH;          // Bitwidth of data
     localparam int REG_ADDR_WIDTH = REG_ADDR_LEN;           // Bitwidth of address, supports 2^N registers by default
-    localparam int NUM_READ_PORTS = OF_PORT * 2;       // Number of read ports
+    localparam int NUM_READ_PORTS = OF_PORT;       // Number of read ports
     localparam int NUM_WRITE_PORTS = WB_PORT;       // Number of write ports
 
     localparam int NUM_LOGICAL_REGISTERS = 32;
@@ -268,7 +268,9 @@ stage_t [DEPTH-1:0] current_status_id;
 logic [DEPTH-1:0] current_status_id_enable;
 
 logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available;
+logic [OF_PORT-1:0] of_port_is_b;
 logic [OF_PORT-1:0] of_enable;
+logic [DEPTH-1:0] is_not_at_of;
 logic of_stall;
 wire is_of_ready;
 of_signals_t of_entries_i [DEPTH-1:0] ;
@@ -345,7 +347,8 @@ rename_register_mapping_table #(
     .MEM_WRITE_PORTS(MEM_WRITE_PORTS),
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
-    .OF_PORT(OF_PORT)
+    .OF_PORT(OF_PORT),
+    .EXE_PORT(EXE_PORT)
 ) rename_register_mapping_table_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -377,7 +380,12 @@ rename_register_mapping_table #(
     .mem_wr_physical_addr(mem_wr_physical_addr),  
 
     .of_ports_available(of_ports_available),    //delivered ports for OF stage
-    .of_enable(of_enable)   //status of the delivered ports for OF stage 
+    .of_port_is_b(of_port_is_b),
+    .of_enable(of_enable),   //status of the delivered ports for OF stage 
+    .is_not_at_of(is_not_at_of),
+
+    .exe_ports_available(exe_ports_available),    //delivered ports for EXE stage
+    .exe_enable(exe_enable)   //status of the delivered ports for EXE stage  
 );
 
 
@@ -429,8 +437,8 @@ ReorderBuffer_pipeline #(
 .current_status_of(current_status_of),
 .current_status_of_enable(current_status_of_enable),
 
-.exe_ports_available(exe_ports_available),
-.exe_enable(exe_enable),
+// .exe_ports_available(exe_ports_available),
+// .exe_enable(exe_enable),
 .exe_clear_signal(exe_clear_signal),
 .exe_clear_mask(exe_clear_mask),
 .exe_set_pt(exe_set_pt),
@@ -612,8 +620,10 @@ reg [MEM_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_mem;
 register_file_pipeline #(
     .REG_DATA_WIDTH(DATA_WIDTH),          // Bitwidth of data
     .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),           // Bitwidth of address, supports 2^N registers by default
-    .NUM_READ_PORTS(OF_PORT * 2),       // Number of read ports
-    .NUM_WRITE_PORTS(WB_PORT)      // Number of write ports
+    .NUM_READ_PORTS(OF_PORT),       // Number of read ports
+    .NUM_WRITE_PORTS(WB_PORT),      // Number of write ports
+    .EXE_WRITE_PORTS(EXE_WRITE_PORTS),
+    .MEM_WRITE_PORTS(MEM_WRITE_PORTS)
 ) register_file_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -645,7 +655,9 @@ of_module_pipeline #(
     .reset(global_reset),
 
     .of_ports_available(of_ports_available),
+    .of_port_is_b(of_port_is_b),
     .of_enable(of_enable),
+    .is_not_at_of(is_not_at_of),
     .of_stall(of_stall),
     .is_of_ready(is_of_ready),
     .of_entries_i(of_entries_i),

@@ -11,7 +11,8 @@ module rename_register_mapping_table #(
     parameter int MEM_WRITE_PORTS = 4,
     parameter int DEPTH = 64,
     parameter int ROB_ADDR_WIDTH = 6,
-    parameter int OF_PORT = 4
+    parameter int OF_PORT = 4,
+    parameter int EXE_PORT = 4   
 ) (
     input wire clk,
     input wire reset,
@@ -43,7 +44,12 @@ module rename_register_mapping_table #(
     input wire [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_addr,  
 
     output logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available,    //delivered ports for OF stage
-    output logic [OF_PORT-1:0] of_enable   //status of the delivered ports for OF stage   
+    output logic [OF_PORT-1:0] of_port_is_b,
+    output logic [OF_PORT-1:0] of_enable,   //status of the delivered ports for OF stage
+    output logic [DEPTH-1:0] is_not_at_of,
+
+    output logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
+    output logic [EXE_PORT-1:0] exe_enable   //status of the delivered ports for EXE stage  
 );
     import signals::*;
 
@@ -135,7 +141,8 @@ module rename_register_mapping_table #(
 
     generate
         for (genvar i3 = 0; i3 < DEPTH; i3++) begin : gen_control_signals
-            assign is_at_of[i3]=(current_status[i3] == OF);
+            assign is_at_of[i3]=(current_status[i3] == EXE);
+            assign is_not_at_of[i3]=(current_status[i3] != EXE);
             assign is_at_exe[i3]=(current_status[i3] == EXE);
             assign is_at_mem[i3]=(current_status[i3] == MEM);
             assign is_at_wb[i3]=(current_status[i3] == WB);
@@ -148,24 +155,20 @@ module rename_register_mapping_table #(
     int current_of_output_port;
 
     always_comb begin   //let go OF:
-        logic [DEPTH-1:0] output_readenable;
-
         logic [DEPTH-1:0] output_readenable_a;
         logic [DEPTH-1:0] output_readenable_b;
 
         current_of_output_port = 0;
 
         for (int i = 0; i < DEPTH; i++) begin
-            output_readenable[i] = 1'b0;
             output_readenable_a[i] = 1'b0;
             output_readenable_b[i] = 1'b0;
         end
 
         for (int i = 0; i < DEPTH; i++) begin
             if (is_at_of[i]) begin
-                output_readenable_a[i] = reg_valid[entries_o[i].id_signals.src_rf_tag_a];
-                output_readenable_b[i] = reg_valid[entries_o[i].id_signals.src_rf_tag_b];
-                output_readenable[i] = output_readenable_a[i] && output_readenable_b[i];
+                output_readenable_a[i] = reg_valid[entries_o[i].id_signals.src_rf_tag_a] && (~entries_o[i].of_signals.pending_a);
+                output_readenable_b[i] = reg_valid[entries_o[i].id_signals.src_rf_tag_b] && (~entries_o[i].of_signals.pending_b);
             end
         end
 
@@ -173,17 +176,73 @@ module rename_register_mapping_table #(
         for (int i = 0; i < OF_PORT; i++) begin
             of_enable[i] = 0;
             of_ports_available[i] = 0;
+            of_port_is_b[i] = 0;
         end
 
         for (int i = 0; i < DEPTH; i++) begin
             int new_index = (i + head) % DEPTH; // Calculate new index
-            if (output_readenable[new_index]) begin
+            if (output_readenable_a[new_index]) begin
                 if (current_of_output_port == OF_PORT)
                     break;
 
                 of_enable[current_of_output_port] = 1;
                 of_ports_available[current_of_output_port] = new_index;
+                of_port_is_b[current_of_output_port] = 0;
                 current_of_output_port += 1;
+            end
+
+            if (output_readenable_b[new_index]) begin
+                if (current_of_output_port == OF_PORT)
+                    break;
+
+                of_enable[current_of_output_port] = 1;
+                of_ports_available[current_of_output_port] = new_index;
+                of_port_is_b[current_of_output_port] = 1;
+                current_of_output_port += 1;
+            end
+        end
+    end
+
+    int current_exe_output_port;
+
+    always_comb begin   //let go EXE:
+        logic [DEPTH-1:0] exe_available;
+        logic [DEPTH-1:0] exe_available_a;
+        logic [DEPTH-1:0] exe_available_b;
+
+        current_exe_output_port = 0;
+
+        for (int i = 0; i < DEPTH; i++) begin
+            exe_available_a[i] = 1'b0;
+            exe_available_b[i] = 1'b0;
+            exe_available[i] = 1'b0;
+        end
+
+        for (int i = 0; i < DEPTH; i++) begin
+            if (is_at_exe[i]) begin
+                exe_available_a[i] = (entries_o[i].of_signals.prepared_a);
+                exe_available_b[i] = (entries_o[i].of_signals.prepared_b);
+                exe_available[i] = exe_available_a[i] && exe_available_b[i];
+
+            end
+        end
+
+        // Set output_enable and output_ports
+        for (int i = 0; i < EXE_PORT; i++) begin
+            exe_enable[i] = 0;
+            exe_ports_available[i] = 0;
+        end
+
+        for (int i = 0; i < DEPTH; i++) begin
+            int new_index = (i + head) % DEPTH; // Calculate new index
+            if (exe_available[new_index]) begin
+                if (current_exe_output_port == EXE_PORT)
+                    break;
+
+                exe_enable[current_exe_output_port] = 1;
+                exe_ports_available[current_exe_output_port] = new_index;
+
+                current_exe_output_port += 1;
             end
         end
     end
