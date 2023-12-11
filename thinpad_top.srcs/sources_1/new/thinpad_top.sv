@@ -112,7 +112,8 @@ module thinpad_top (
 //   logic global_reset = reset_of_clk10M;
 
   logic global_clock; 
-  assign global_clock = clk_20M;
+//   assign global_clock = clk_20M;
+  assign global_clock = clk_10M;
 //   assign global_clock = clk_50M;
   logic global_reset; 
   assign global_reset = reset_of_clk10M;
@@ -178,7 +179,7 @@ module thinpad_top (
     localparam int NUM_WRITE_PORTS = WB_PORT;       // Number of write ports
 
     localparam int NUM_LOGICAL_REGISTERS = 32;
-    localparam int NUM_PHYSICAL_REGISTERS = 64;
+    localparam int NUM_PHYSICAL_REGISTERS = 48;
     localparam int LOGICAL_REGISTERS_ADDR_LEN = 5;
     localparam int PHYSICAL_REGISTERS_ADDR_LEN = 6;
     localparam int ASSIGN_PORTS = ID_PORT;
@@ -279,6 +280,8 @@ logic [DEPTH-1:0] current_status_of_enable;
 
 logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available;
 logic [EXE_PORT-1:0] exe_enable;
+logic [EXE_PORT-1:0] exe_is_ready_a;
+logic [EXE_PORT-1:0] exe_is_ready_b;
 logic exe_clear_signal;
 logic [DEPTH-1:0] exe_clear_mask;
 logic [ROB_ADDR_WIDTH-1:0] exe_set_pt;
@@ -388,6 +391,8 @@ rename_register_mapping_table #(
 
     .exe_ports_available(exe_ports_available),    //delivered ports for EXE stage
     .exe_enable(exe_enable),   //status of the delivered ports for EXE stage  
+    .exe_is_ready_a(exe_is_ready_a),
+    .exe_is_ready_b(exe_is_ready_b),
     .is_cached_exe(is_cached_exe)
 );
 
@@ -726,6 +731,8 @@ exe_module_pipeline #(
 
     .exe_ports_available(exe_ports_available),
     .exe_enable(exe_enable),
+    .exe_is_ready_a(exe_is_ready_a),
+    .exe_is_ready_b(exe_is_ready_b),
     .exe_clear_signal(exe_clear_signal),
     .exe_clear_mask(exe_clear_mask),
     .exe_set_pt(exe_set_pt),
@@ -906,7 +913,7 @@ exe_module_pipeline #(
   // 串口控制器模块
   // NOTE: 如果修改系统时钟频率，也需要修改此处的时钟频率参数
   uart_controller #(
-      .CLK_FREQ(20_000_000),
+      .CLK_FREQ(10_000_000),
       .BAUD    (115200)
   ) uart_controller (
       .clk_i(global_clock),

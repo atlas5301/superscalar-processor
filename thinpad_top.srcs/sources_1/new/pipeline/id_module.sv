@@ -69,6 +69,9 @@ module id_module_pipeline #(
         decoded.rr_a = 0;
         decoded.rr_b = 0;
         decoded.rr_dst = 0;
+        decoded.src_rf_tag_a = 0;
+        decoded.src_rf_tag_b = 0;
+        decoded.dst_rf_tag = 0;
 
         // Process fields for immediate values
         case(opcode)
@@ -158,6 +161,8 @@ module id_module_pipeline #(
     logic [DEPTH-1:0] mask_id;
     logic [ID_PORT-1:0] enable_addr_id;
     logic [ID_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_id;
+
+    id_signals_t tmp_id_signals [ID_PORT-1:0];
     
 
     // assign current_status_id_enable = mask_id;
@@ -174,6 +179,9 @@ module id_module_pipeline #(
 
 
     always_ff @(posedge clk) begin
+        for (int i=0; i < ASSIGN_PORTS; i++) begin
+            assign_physical_regs[i] <= available_physical_regs[i];
+        end
         // current_status_id_enable <= mask_id;
         if (reset) begin
             is_id_ready <= 1'b0;
@@ -211,23 +219,22 @@ module id_module_pipeline #(
                     //$display("ID: %d %d %d", i, available_regs_enable[i], available_physical_regs[i]);
                     if (enable_addr_id[i]) begin
                         if (available_regs_enable[i]) begin
-                            id_signals_t tmp_id_signals = rv32i_decoder_func(entries_o[addr_id[i]].if_signals.inst);
+                            tmp_id_signals[i] = rv32i_decoder_func(entries_o[addr_id[i]].if_signals.inst);
 
-                            tmp_id_signals.src_rf_tag_a = latest_table[tmp_id_signals.rr_a];
-                            tmp_id_signals.src_rf_tag_b = latest_table[tmp_id_signals.rr_b];                            
+                            tmp_id_signals[i].src_rf_tag_a = latest_table[tmp_id_signals[i].rr_a];
+                            tmp_id_signals[i].src_rf_tag_b = latest_table[tmp_id_signals[i].rr_b];                            
 
-                            if (tmp_id_signals.rr_dst != 0) begin
-                                tmp_id_signals.dst_rf_tag = available_physical_regs[i];
-                                latest_table[tmp_id_signals.rr_dst] = available_physical_regs[i];
+                            if (tmp_id_signals[i].rr_dst != 0) begin
+                                tmp_id_signals[i].dst_rf_tag = available_physical_regs[i];
+                                latest_table[tmp_id_signals[i].rr_dst] = available_physical_regs[i];
                                 assign_regs_enable[i] <= 1'b1;
-                                assign_physical_regs[i] <= available_physical_regs[i];
                                 // $display("ID: %d %d", i, available_physical_regs[i]);
 
                             end else begin
-                                tmp_id_signals.dst_rf_tag = 'b0;
+                                tmp_id_signals[i].dst_rf_tag = 'b0;
                             end
 
-                            id_entries_i[addr_id[i]] <= tmp_id_signals;
+                            id_entries_i[addr_id[i]] <= tmp_id_signals[i];
                             //$display("IDPC: %h",entries_o[addr_id[i]].if_signals.PC);
                             current_status_id[addr_id[i]] <= EXE;
                         end else begin

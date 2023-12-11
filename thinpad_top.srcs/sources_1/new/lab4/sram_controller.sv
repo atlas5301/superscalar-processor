@@ -163,6 +163,10 @@ module sram_controller #(
                   state <= STATE_IDLE;
               end
 
+              default: begin
+                  state <= STATE_IDLE;
+              end
+
           endcase
       end
   end

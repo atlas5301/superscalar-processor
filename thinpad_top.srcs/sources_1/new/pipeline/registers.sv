@@ -33,11 +33,11 @@ module register_file_pipeline #(
         if (reset) begin
             registers <= '{default: 0};  // Reset all registers
         end else begin
-            for (int i = 0; i < NUM_WRITE_PORTS; i = i + 1) begin
-                if (wr_en[i] && wr_addr[i] != 0) begin  // Ensure not writing to address 0
-                    registers[wr_addr[i]] <= wr_data[i];
-                end
-            end
+            // for (int i = 0; i < NUM_WRITE_PORTS; i = i + 1) begin
+            //     if (wr_en[i] && wr_addr[i] != 0) begin  // Ensure not writing to address 0
+            //         registers[wr_addr[i]] <= wr_data[i];
+            //     end
+            // end
 
             for (int i = 0; i < EXE_WRITE_PORTS; i = i + 1) begin
                 if (wr_en_exe[i] && wr_addr_exe[i] != 0) begin  // Ensure not writing to address 0

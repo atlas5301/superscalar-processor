@@ -396,7 +396,11 @@ module mem_module_pipeline #(
 
             wr_en_mem <= 'b0;
             mem_wr_enable <= 'b0;
-
+            for (int i=0; i< MEM_WRITE_PORTS; i++) begin
+                mem_wr_physical_addr[i] = 'b0;
+                wr_addr_mem = 'b0;
+                wr_data_mem = 'b0;
+            end
         end else begin
 
             wr_en_mem <= 'b0;

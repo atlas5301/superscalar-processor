@@ -221,6 +221,11 @@ module wb_module_pipeline  #(
             next_head <= 0;
             submit_regs_enable <= 'b0;
 
+            for (int i=0; i<WB_PORT; i++) begin
+                wr_addr[i] <= 'b0;
+                wr_data[i] <= 'b0;
+            end
+
         end else begin
             submit_regs_enable <= 'b0;
             if (is_pipeline_stall) begin

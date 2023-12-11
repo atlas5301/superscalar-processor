@@ -9,13 +9,15 @@ module exe_module_pipeline #(
     parameter int EXE_WRITE_PORTS = 4, 
     parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
     parameter int NUM_PHYSICAL_REGISTERS = 64,
-    parameter int CACHE_CYCLES = 2
+    parameter int CACHE_CYCLES = 3
 ) (
     input wire clk,
     input wire reset,
 
     input wire [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
     input wire [EXE_PORT-1:0] exe_enable,   //status of the delivered ports for EXE stage
+    input wire [EXE_PORT-1:0] exe_is_ready_a,
+    input wire [EXE_PORT-1:0] exe_is_ready_b,
 
     output logic exe_clear_signal,     //whether instructions should be emptied from buffer.
     output logic [DEPTH-1:0] exe_clear_mask,    //the address of instructions in ROB to be emptied.
@@ -226,13 +228,13 @@ module exe_module_pipeline #(
 
                     for (int i=0;i<EXE_PORT;i++) begin
                         if (enable_addr_exe[i]) begin
-                            if (entries_o[addr_exe[i]].of_signals.prepared_a) begin
+                            if (exe_is_ready_a[i]) begin
                                 a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
                             end else begin
                                 a = cached_value[entries_o[addr_exe[i]].id_signals.src_rf_tag_a];
                             end
 
-                            if (entries_o[addr_exe[i]].of_signals.prepared_b) begin
+                            if (exe_is_ready_b[i]) begin
                                 tmpb = entries_o[addr_exe[i]].of_signals.rf_rdata_b;
                             end else begin
                                 tmpb = cached_value[entries_o[addr_exe[i]].id_signals.src_rf_tag_b];

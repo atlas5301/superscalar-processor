@@ -50,7 +50,9 @@ module rename_register_mapping_table #(
     output logic [DEPTH-1:0] is_not_at_of,
 
     output logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
-    output logic [EXE_PORT-1:0] exe_enable   //status of the delivered ports for EXE stage  
+    output logic [EXE_PORT-1:0] exe_enable,   //status of the delivered ports for EXE stage  
+    output logic [EXE_PORT-1:0] exe_is_ready_a,
+    output logic [EXE_PORT-1:0] exe_is_ready_b
 );
     import signals::*;
 
@@ -214,6 +216,8 @@ module rename_register_mapping_table #(
         logic [DEPTH-1:0] exe_available;
         logic [DEPTH-1:0] exe_available_a;
         logic [DEPTH-1:0] exe_available_b;
+        logic [DEPTH-1:0] tmp_is_ready_a;
+        logic [DEPTH-1:0] tmp_is_ready_b;     
 
         current_exe_output_port = 0;
 
@@ -225,8 +229,10 @@ module rename_register_mapping_table #(
 
         for (int i = 0; i < DEPTH; i++) begin
             if (is_at_exe[i]) begin
-                exe_available_a[i] = (entries_o[i].of_signals.prepared_a) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_a];
-                exe_available_b[i] = (entries_o[i].of_signals.prepared_b) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_b];
+                tmp_is_ready_a[i] = entries_o[i].of_signals.prepared_a;
+                tmp_is_ready_b[i] = entries_o[i].of_signals.prepared_b;
+                exe_available_a[i] = (tmp_is_ready_a[i]) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_a];
+                exe_available_b[i] = (tmp_is_ready_b[i]) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_b];
                 exe_available[i] = (exe_available_a[i] && exe_available_b[i]);
 
             end
@@ -246,6 +252,9 @@ module rename_register_mapping_table #(
 
                 exe_enable[current_exe_output_port] = 1;
                 exe_ports_available[current_exe_output_port] = new_index;
+                exe_is_ready_a[current_exe_output_port] = tmp_is_ready_a[new_index];
+                exe_is_ready_b[current_exe_output_port] = tmp_is_ready_b[new_index];
+                
 
                 current_exe_output_port += 1;
             end
