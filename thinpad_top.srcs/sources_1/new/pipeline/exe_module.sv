@@ -149,7 +149,7 @@ module exe_module_pipeline #(
 
     always_ff @(posedge clk) begin
         // current_status_exe_enable <= mask_exe;
-
+        unpredicted_jump_entry_head <= head;
         for (int i=0; i< CACHE_CYCLES-1; i++) begin
             for (int j=0; j< EXE_WRITE_PORTS; j++) begin
                 wr_en_exe_cache[i+1][j] <= wr_en_exe_cache[i][j];
@@ -262,17 +262,15 @@ module exe_module_pipeline #(
                             endcase
 
                             exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;   // here, the result should be final, otherwise may cause problems
-
+                            exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
+                            wr_addr_exe[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
+                            wr_data_exe[i] <= result;
+                            wr_addr_exe_cache[0][i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
+                            wr_data_exe_cache[0][i] <= result;
                             if (~entries_o[addr_exe[i]].id_signals.mem_en) begin
                                 wr_en_exe[i] <= 1'b1;
                                 exe_wr_enable[i] <= 1'b1;
-                                exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
-                                wr_addr_exe[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
-                                wr_data_exe[i] <= result;
-
                                 wr_en_exe_cache[0][i] <= 1'b1;
-                                wr_addr_exe_cache[0][i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
-                                wr_data_exe_cache[0][i] <= result;
                             end
                         // if ((entries_o[addr_exe[i]].if_signals.PC == 32'h80000074)) begin
                             //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
@@ -299,15 +297,18 @@ module exe_module_pipeline #(
                                 if (~entries_o[addr_exe[i]].id_signals.is_pc_op) begin
                                     //left for branch prediction
                                 end
-
+                                unpredicted_jump_entry_addr <= addr_exe[0];
+                                // unpredicted_jump_entry_head <= head;
+                                unpredicted_jump_pc_base = entries_o[addr_exe[0]].if_signals.PC;
+                                unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[0]].id_signals.immediate : 4;
 
 
                                 if (entries_o[addr_exe[i]].id_signals.is_pc_op | branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
                                     unpredicted_jump <= 1'b1;
-                                    unpredicted_jump_entry_addr <= addr_exe[i];
-                                    unpredicted_jump_entry_head <= head;
-                                    unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
-                                    unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
+                                    // unpredicted_jump_entry_addr <= addr_exe[i];
+                                    // unpredicted_jump_entry_head <= head;
+                                    // unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
+                                    // unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
                                     current_status_exe[addr_exe[i]] <= EXE;
                                     //$display("unpredicted branch: %d %h %h %h", i, entries_o[addr_exe[i]].if_signals.PC,  entries_o[addr_exe[i]].if_signals.inst, unpredicted_jump_pc_additional);
                                 end else begin

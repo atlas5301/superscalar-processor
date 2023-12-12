@@ -234,7 +234,7 @@ module rename_register_mapping_table #(
         logic [DEPTH-1:0] exe_available_b;
         logic [DEPTH-1:0] tmp_exe_is_branch;
         logic [DEPTH-1:0] tmp_is_ready_a;
-        logic [DEPTH-1:0] tmp_is_ready_b;     
+        logic [DEPTH-1:0] tmp_is_ready_b;   
 
         current_exe_output_port = 0;
         exe_is_branch = 1'b0;
@@ -262,23 +262,13 @@ module rename_register_mapping_table #(
         for (int i = 0; i < EXE_PORT; i++) begin
             exe_enable[i] = 0;
             exe_ports_available[i] = 0;
+            exe_is_ready_a[i] = 0;
+            exe_is_ready_b[i] = 0;
         end
 
         for (int i = 0; i < DEPTH; i++) begin
             int new_index = (i + head) % DEPTH; // Calculate new index
             if (exe_available[new_index]) begin
-                if (tmp_exe_is_branch[new_index]) begin
-                    if (current_exe_output_port != 0) begin
-                        break;
-                    end
-                    exe_enable[current_exe_output_port] = 1;
-                    exe_ports_available[current_exe_output_port] = new_index;
-                    exe_is_ready_a[current_exe_output_port] = tmp_is_ready_a[new_index];
-                    exe_is_ready_b[current_exe_output_port] = tmp_is_ready_b[new_index];
-                    exe_is_branch = 1'b1;
-                    break;
-                end
-
                 if (current_exe_output_port == EXE_PORT)
                     break;
 
@@ -286,9 +276,16 @@ module rename_register_mapping_table #(
                 exe_ports_available[current_exe_output_port] = new_index;
                 exe_is_ready_a[current_exe_output_port] = tmp_is_ready_a[new_index];
                 exe_is_ready_b[current_exe_output_port] = tmp_is_ready_b[new_index];
+                if (tmp_exe_is_branch[new_index]) begin
+                    exe_is_branch = 1'b1;
+                end
                 
                 current_exe_output_port += 1;
             end
+        end
+        if (exe_is_branch) begin
+            exe_enable = 'b0;
+            exe_enable[0] = 1'b1;
         end
     end
 
