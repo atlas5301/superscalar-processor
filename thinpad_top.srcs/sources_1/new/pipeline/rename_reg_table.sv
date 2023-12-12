@@ -12,7 +12,9 @@ module rename_register_mapping_table #(
     parameter int DEPTH = 64,
     parameter int ROB_ADDR_WIDTH = 6,
     parameter int OF_PORT = 4,
-    parameter int EXE_PORT = 4   
+    parameter int EXE_PORT = 4,
+    parameter int REG_ASSIGN_SET_SIZE = 16,
+    parameter int REG_ASSIGN_SET_NUM = 3   
 ) (
     input wire clk,
     input wire reset,
@@ -33,6 +35,8 @@ module rename_register_mapping_table #(
 
     input riscv_pipeline_signals_t entries_o [DEPTH-1:0],
     input wire stage_t [DEPTH-1:0] current_status,
+    input wire stage_t [DEPTH-1:0] status,
+    input wire [DEPTH-1:0] is_at_exe_fast, 
     input wire [ROB_ADDR_WIDTH-1:0] head,
 
     output logic [NUM_PHYSICAL_REGISTERS-1:0] reg_valid,
@@ -56,6 +60,10 @@ module rename_register_mapping_table #(
 );
     import signals::*;
 
+    typedef enum logic [3:0] {STATE0, STATE1, STATE2, STATE3} state_assign_t;
+
+    state_assign_t state_assign;
+
     logic [NUM_PHYSICAL_REGISTERS-1:0] reg_in_use;
     logic [NUM_PHYSICAL_REGISTERS-1:0] reg_in_use_input;
 
@@ -76,7 +84,7 @@ module rename_register_mapping_table #(
     genvar i;
     generate
         for (i = 1; i < NUM_PHYSICAL_REGISTERS; i++) begin: gen_assign
-            assign reg_in_use[i] = reg_in_use_input[i] | reg_in_use_input_ahead[i];
+            assign reg_in_use[i] = reg_in_use_input[i];
             assign reg_valid[i] = reg_valid_input[i] | reg_valid_input_ahead[i];
             assign submitted_reg_in_use[i] = submitted_reg_in_use_input[i];
         end
@@ -107,7 +115,7 @@ module rename_register_mapping_table #(
         end  
     end
 
-    int current_port;
+    int current_port, current_entry_base;
 
     always_comb begin  //block for output available ports
         // Set output_enable and output_ports
@@ -118,14 +126,21 @@ module rename_register_mapping_table #(
 
         current_port = 0;
 
+        case(state_assign)
+            STATE0: current_entry_base = 0 * REG_ASSIGN_SET_SIZE;
+            STATE1: current_entry_base = 1 * REG_ASSIGN_SET_SIZE;
+            STATE2: current_entry_base = 2 * REG_ASSIGN_SET_SIZE;
+            default: current_entry_base = 0 * REG_ASSIGN_SET_SIZE;
+        endcase
+
         // Check from head to DEPTH
-        for (int i = 0; i < NUM_PHYSICAL_REGISTERS; i++) begin
-            if (!reg_in_use[i]) begin
+        for (int i = 0; i < REG_ASSIGN_SET_SIZE; i++) begin
+            if (!reg_in_use[i + current_entry_base]) begin
                 if (current_port == ASSIGN_PORTS)
                     break;
 
                 available_regs_enable[current_port] = 1'b1;
-                available_physical_regs[current_port] = i;
+                available_physical_regs[current_port] = i + current_entry_base;
                 current_port += 1;
             end
         end
@@ -146,7 +161,7 @@ module rename_register_mapping_table #(
         for (genvar i3 = 0; i3 < DEPTH; i3++) begin : gen_control_signals
             assign is_at_of[i3]=(current_status[i3] == EXE);
             assign is_not_at_of[i3]=(current_status[i3] != EXE);
-            assign is_at_exe[i3]=(current_status[i3] == EXE);
+            assign is_at_exe[i3]=(status[i3] == EXE);
             assign is_at_mem[i3]=(current_status[i3] == MEM);
             assign is_at_wb[i3]=(current_status[i3] == WB);
             assign read1_conflict_control[i3]=entries_o[i3].id_signals.rr_a;
@@ -225,16 +240,17 @@ module rename_register_mapping_table #(
             exe_available_a[i] = 1'b0;
             exe_available_b[i] = 1'b0;
             exe_available[i] = 1'b0;
+            tmp_is_ready_a[i] = 1'b0;
+            tmp_is_ready_b[i] = 1'b0;
         end
 
         for (int i = 0; i < DEPTH; i++) begin
-            if (is_at_exe[i]) begin
+            if (is_at_exe_fast[i]) begin
                 tmp_is_ready_a[i] = entries_o[i].of_signals.prepared_a;
                 tmp_is_ready_b[i] = entries_o[i].of_signals.prepared_b;
-                exe_available_a[i] = (tmp_is_ready_a[i]) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_a];
-                exe_available_b[i] = (tmp_is_ready_b[i]) | is_cached_exe[entries_o[i].id_signals.src_rf_tag_b];
+                exe_available_a[i] = (tmp_is_ready_a[i]) | (is_cached_exe[entries_o[i].id_signals.src_rf_tag_a]);
+                exe_available_b[i] = (tmp_is_ready_b[i]) | (is_cached_exe[entries_o[i].id_signals.src_rf_tag_b]);
                 exe_available[i] = (exe_available_a[i] && exe_available_b[i]);
-
             end
         end
 
@@ -280,9 +296,20 @@ module rename_register_mapping_table #(
                 reg_valid_input[i] = 1'b0;
                 submitted_reg_in_use_input[i] = 1'b0;
             end
+
+            state_assign <= STATE0;
         end else begin
+            case(state_assign)
+                STATE0: state_assign <= STATE1;
+                STATE1: state_assign <= STATE2;
+                STATE2: state_assign <= STATE0;
+                default: state_assign <= STATE0;
+            endcase
+
+
+
             reg_valid_input = reg_valid;
-            reg_in_use_input = reg_in_use;
+            reg_in_use_input = reg_in_use | reg_in_use_input_ahead;
             //first of all, simply submit used reg.
             for (int i=0; i< SUBMIT_PORTS; i++) begin
                 if (submit_regs_enable[i]) begin

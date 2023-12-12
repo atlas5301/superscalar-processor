@@ -228,6 +228,12 @@ module exe_module_pipeline #(
 
                     for (int i=0;i<EXE_PORT;i++) begin
                         if (enable_addr_exe[i]) begin
+                            is_branch = entries_o[addr_exe[i]].id_signals.is_branch;
+
+                            if (is_branch && i!=0) begin
+                                break;
+                            end
+
                             if (exe_is_ready_a[i]) begin
                                 a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
                             end else begin
@@ -275,12 +281,9 @@ module exe_module_pipeline #(
                             //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // end
                             debug_PC <= entries_o[addr_exe[i]].if_signals.PC; 
-
-
-                            is_branch = entries_o[addr_exe[i]].id_signals.is_branch;
                             branch_op = entries_o[addr_exe[i]].id_signals.branch_op;
 
-                            if (is_branch) begin
+                            if (is_branch && i==0) begin
                                 // next_pc = entries_o[addr_exe[i]].if_signals.PC;
                                 branch_taken = 1'b0;
                                 case(branch_op)
@@ -293,10 +296,16 @@ module exe_module_pipeline #(
                                         end
                                     end
                                     default: begin
-                                        next_pc = entries_o[addr_exe[i]].if_signals.PC+4;
+                                        //next_pc = entries_o[addr_exe[i]].if_signals.PC+4;
                                     end
                                 endcase
-                                if (branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
+                                if (~entries_o[addr_exe[i]].id_signals.is_pc_op) begin
+                                    //left for branch prediction
+                                end
+
+
+
+                                if (entries_o[addr_exe[i]].id_signals.is_pc_op | branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
                                     unpredicted_jump <= 1'b1;
                                     unpredicted_jump_entry_addr <= addr_exe[i];
                                     unpredicted_jump_entry_head <= head;

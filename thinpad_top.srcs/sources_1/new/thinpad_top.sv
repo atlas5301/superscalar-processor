@@ -112,8 +112,8 @@ module thinpad_top (
 //   logic global_reset = reset_of_clk10M;
 
   logic global_clock; 
-//   assign global_clock = clk_20M;
-  assign global_clock = clk_10M;
+  assign global_clock = clk_20M;
+//   assign global_clock = clk_10M;
 //   assign global_clock = clk_50M;
   logic global_reset; 
   assign global_reset = reset_of_clk10M;
@@ -179,13 +179,15 @@ module thinpad_top (
     localparam int NUM_WRITE_PORTS = WB_PORT;       // Number of write ports
 
     localparam int NUM_LOGICAL_REGISTERS = 32;
-    localparam int NUM_PHYSICAL_REGISTERS = 48;
+    localparam int REG_ASSIGN_SET_SIZE = 16;
+    localparam int REG_ASSIGN_SET_NUM = 3; 
+    localparam int NUM_PHYSICAL_REGISTERS = REG_ASSIGN_SET_NUM * REG_ASSIGN_SET_SIZE;
     localparam int LOGICAL_REGISTERS_ADDR_LEN = 5;
     localparam int PHYSICAL_REGISTERS_ADDR_LEN = 6;
     localparam int ASSIGN_PORTS = ID_PORT;
     localparam int SUBMIT_PORTS = WB_PORT;
     localparam int EXE_WRITE_PORTS = EXE_PORT;
-    localparam int MEM_WRITE_PORTS = MEM_PORT;
+    localparam int MEM_WRITE_PORTS = 1;
 
 
     logic enable_IF;
@@ -312,6 +314,8 @@ logic [DEPTH-1:0] current_status_wb_enable;
 
 riscv_pipeline_signals_t entries_o [DEPTH-1:0];
 stage_t [DEPTH-1:0] current_status;
+stage_t [DEPTH-1:0] status;
+logic [DEPTH-1:0] is_at_exe_fast;
 
 wire is_ready;
 wire is_pipeline_stall;
@@ -344,6 +348,8 @@ logic [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_add
 rename_register_mapping_table #(
     .NUM_LOGICAL_REGISTERS(NUM_LOGICAL_REGISTERS),
     .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS),
+    .REG_ASSIGN_SET_NUM(REG_ASSIGN_SET_NUM),
+    .REG_ASSIGN_SET_SIZE(REG_ASSIGN_SET_SIZE),
     .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
     .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
     .ASSIGN_PORTS(ASSIGN_PORTS),
@@ -373,6 +379,8 @@ rename_register_mapping_table #(
 
     .entries_o(entries_o),
     .current_status(current_status),
+    .status(status),
+    .is_at_exe_fast(is_at_exe_fast),
     .head(head),
 
 
@@ -477,6 +485,8 @@ ReorderBuffer_pipeline #(
 
 .entries_o(entries_o),
 .current_status(current_status),
+.status(status),
+.is_at_exe_fast(is_at_exe_fast),
 .is_ready(is_ready),
 .is_pipeline_stall(is_pipeline_stall),
 .head(head)
@@ -913,7 +923,7 @@ exe_module_pipeline #(
   // 串口控制器模块
   // NOTE: 如果修改系统时钟频率，也需要修改此处的时钟频率参数
   uart_controller #(
-      .CLK_FREQ(10_000_000),
+      .CLK_FREQ(20_000_000),
       .BAUD    (115200)
   ) uart_controller (
       .clk_i(global_clock),

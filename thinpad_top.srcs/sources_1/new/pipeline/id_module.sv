@@ -110,7 +110,7 @@ module id_module_pipeline #(
             end
             7'b1100011: begin // BEQ
                 decoded.is_branch = 1;
-                decoded.is_pc_op = 1;
+                decoded.is_pc_op = 0;
                 decoded.rr_a = rs1;
                 decoded.rr_b = rs2;
                 decoded.use_rs2 = 1;

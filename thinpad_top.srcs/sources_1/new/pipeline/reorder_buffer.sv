@@ -87,6 +87,8 @@ module ReorderBuffer_pipeline #(
 
     output riscv_pipeline_signals_t entries_o [DEPTH-1:0],
     output stage_t [DEPTH-1:0] current_status,
+    output stage_t [DEPTH-1:0] status,
+    output logic [DEPTH-1:0] is_at_exe_fast, 
 
 
 
@@ -114,8 +116,6 @@ module ReorderBuffer_pipeline #(
 
 
     localparam NUM_ARRAYS = 8;
-
-    stage_t [DEPTH-1:0] status;
     logic [NUM_ARRAYS-1:0][DEPTH-1:0] masks;
     stage_t [NUM_ARRAYS-1:0][DEPTH-1:0] arrays;
 
@@ -191,6 +191,8 @@ module ReorderBuffer_pipeline #(
             assign is_at_exe[i3]=(current_status[i3] == EXE);
             assign is_at_mem[i3]=(current_status[i3] == MEM);
             assign is_at_wb[i3]=(current_status[i3] == WB);
+
+            assign is_at_exe_fast[i3]=current_status_exe_enable[i3] ? (current_status_exe[i3] == EXE) : (status[i3] == EXE);
         end
     endgenerate
 
