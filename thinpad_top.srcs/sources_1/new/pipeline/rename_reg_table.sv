@@ -56,7 +56,8 @@ module rename_register_mapping_table #(
     output logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
     output logic [EXE_PORT-1:0] exe_enable,   //status of the delivered ports for EXE stage  
     output logic [EXE_PORT-1:0] exe_is_ready_a,
-    output logic [EXE_PORT-1:0] exe_is_ready_b
+    output logic [EXE_PORT-1:0] exe_is_ready_b,
+    output logic exe_is_branch
 );
     import signals::*;
 
@@ -231,10 +232,12 @@ module rename_register_mapping_table #(
         logic [DEPTH-1:0] exe_available;
         logic [DEPTH-1:0] exe_available_a;
         logic [DEPTH-1:0] exe_available_b;
+        logic [DEPTH-1:0] tmp_exe_is_branch;
         logic [DEPTH-1:0] tmp_is_ready_a;
         logic [DEPTH-1:0] tmp_is_ready_b;     
 
         current_exe_output_port = 0;
+        exe_is_branch = 1'b0;
 
         for (int i = 0; i < DEPTH; i++) begin
             exe_available_a[i] = 1'b0;
@@ -242,6 +245,7 @@ module rename_register_mapping_table #(
             exe_available[i] = 1'b0;
             tmp_is_ready_a[i] = 1'b0;
             tmp_is_ready_b[i] = 1'b0;
+            tmp_exe_is_branch[i] = entries_o[i].id_signals.is_branch;
         end
 
         for (int i = 0; i < DEPTH; i++) begin
@@ -263,6 +267,18 @@ module rename_register_mapping_table #(
         for (int i = 0; i < DEPTH; i++) begin
             int new_index = (i + head) % DEPTH; // Calculate new index
             if (exe_available[new_index]) begin
+                if (tmp_exe_is_branch[new_index]) begin
+                    if (current_exe_output_port != 0) begin
+                        break;
+                    end
+                    exe_enable[current_exe_output_port] = 1;
+                    exe_ports_available[current_exe_output_port] = new_index;
+                    exe_is_ready_a[current_exe_output_port] = tmp_is_ready_a[new_index];
+                    exe_is_ready_b[current_exe_output_port] = tmp_is_ready_b[new_index];
+                    exe_is_branch = 1'b1;
+                    break;
+                end
+
                 if (current_exe_output_port == EXE_PORT)
                     break;
 
@@ -271,7 +287,6 @@ module rename_register_mapping_table #(
                 exe_is_ready_a[current_exe_output_port] = tmp_is_ready_a[new_index];
                 exe_is_ready_b[current_exe_output_port] = tmp_is_ready_b[new_index];
                 
-
                 current_exe_output_port += 1;
             end
         end

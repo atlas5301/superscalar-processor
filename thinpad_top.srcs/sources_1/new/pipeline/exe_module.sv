@@ -230,10 +230,7 @@ module exe_module_pipeline #(
                         if (enable_addr_exe[i]) begin
                             is_branch = entries_o[addr_exe[i]].id_signals.is_branch;
 
-                            if (is_branch && i!=0) begin
-                                break;
-                            end
-
+                            current_status_exe[addr_exe[i]] <= MEM;
                             if (exe_is_ready_a[i]) begin
                                 a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
                             end else begin
@@ -283,7 +280,7 @@ module exe_module_pipeline #(
                             debug_PC <= entries_o[addr_exe[i]].if_signals.PC; 
                             branch_op = entries_o[addr_exe[i]].id_signals.branch_op;
 
-                            if (is_branch && i==0) begin
+                            if (is_branch && i == 0) begin
                                 // next_pc = entries_o[addr_exe[i]].if_signals.PC;
                                 branch_taken = 1'b0;
                                 case(branch_op)
@@ -311,13 +308,12 @@ module exe_module_pipeline #(
                                     unpredicted_jump_entry_head <= head;
                                     unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
                                     unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
+                                    current_status_exe[addr_exe[i]] <= EXE;
                                     //$display("unpredicted branch: %d %h %h %h", i, entries_o[addr_exe[i]].if_signals.PC,  entries_o[addr_exe[i]].if_signals.inst, unpredicted_jump_pc_additional);
-                                    break;
                                 end else begin
                                     //$display("predicted branch: %d %h %h", i, entries_o[addr_exe[i]].if_signals.PC,  entries_o[addr_exe[i]].if_signals.inst);
                                 end
                             end
-                            current_status_exe[addr_exe[i]] <= MEM;
                                 
                         end
                     end

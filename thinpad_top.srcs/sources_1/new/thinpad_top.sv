@@ -87,13 +87,14 @@ module thinpad_top (
   /* =========== Demo code begin =========== */
 
   // PLL 分频示例
-  logic locked, clk_10M, clk_20M;
+  logic locked, clk_10M, clk_20M, clk_40M;
   pll_example clock_gen (
       // Clock in ports
       .clk_in1(clk_50M),  // 外部时钟输入
       // Clock out ports
       .clk_out1(clk_10M),  // 时钟输出 1，频率在 IP 配置界面中设置
       .clk_out2(clk_20M),  // 时钟输出 2，频率在 IP 配置界面中设置
+      .clk_out3(clk_40M),
       // Status and control signals
       .reset(reset_btn),  // PLL 复位输入
       .locked(locked)  // PLL 锁定指示输出，"1"表示时钟稳定，
@@ -112,12 +113,14 @@ module thinpad_top (
 //   logic global_reset = reset_of_clk10M;
 
   logic global_clock; 
-  assign global_clock = clk_20M;
+//   assign global_clock = clk_20M;
 //   assign global_clock = clk_10M;
+  assign global_clock = clk_40M;
 //   assign global_clock = clk_50M;
   logic global_reset; 
   assign global_reset = reset_of_clk10M;
 //   assign global_reset = reset_btn;
+  localparam int CLK_FREQ = 40_000_000;
 
   // 不使用内存、串口时，禁用其使能信号
 
@@ -923,7 +926,7 @@ exe_module_pipeline #(
   // 串口控制器模块
   // NOTE: 如果修改系统时钟频率，也需要修改此处的时钟频率参数
   uart_controller #(
-      .CLK_FREQ(20_000_000),
+      .CLK_FREQ(CLK_FREQ),
       .BAUD    (115200)
   ) uart_controller (
       .clk_i(global_clock),
