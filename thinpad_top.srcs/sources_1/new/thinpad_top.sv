@@ -328,6 +328,12 @@ wire is_ready;
 wire is_pipeline_stall;
 logic [ROB_ADDR_WIDTH-1:0] head;
 
+logic branch_prediction_en;
+logic [PC_WIDTH-1:0] branch_prediction_pc;
+logic [PC_WIDTH-1:0] branch_prediction_bias;
+logic branch_prediction_taken;
+logic clear_btb;
+
 
 logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out;
 
@@ -496,7 +502,12 @@ ReorderBuffer_pipeline #(
 .is_at_exe_fast(is_at_exe_fast),
 .is_ready(is_ready),
 .is_pipeline_stall(is_pipeline_stall),
-.head(head)
+.head(head),
+.branch_prediction_en(branch_prediction_en),
+.branch_prediction_pc(branch_prediction_pc),
+.branch_prediction_bias(branch_prediction_bias),
+.branch_prediction_taken(branch_prediction_taken),
+.clear_btb(clear_btb)
 );
 
 if_module_pipeline #(
@@ -771,7 +782,13 @@ exe_module_pipeline #(
     .wr_addr_exe(wr_addr_exe),
     .wr_data_exe(wr_data_exe),
 
-    .is_cached_exe(is_cached_exe)
+    .is_cached_exe(is_cached_exe),
+
+    .branch_prediction_en(branch_prediction_en),
+    .branch_prediction_pc(branch_prediction_pc),
+    .branch_prediction_bias(branch_prediction_bias),
+    .branch_prediction_taken(branch_prediction_taken),
+    .clear_btb(clear_btb)
 );
 
 

@@ -95,7 +95,13 @@ module ReorderBuffer_pipeline #(
     // Status signals
     output wire is_ready,
     output wire is_pipeline_stall,
-    output logic [ROB_ADDR_WIDTH-1:0] head
+    output logic [ROB_ADDR_WIDTH-1:0] head,
+
+    input wire branch_prediction_en,
+    input wire [PC_WIDTH-1:0] branch_prediction_pc,
+    input wire [PC_WIDTH-1:0] branch_prediction_bias,
+    input wire branch_prediction_taken,
+    input wire clear_btb
 );
     import signals::*;
     assign head = next_head;
@@ -300,7 +306,13 @@ module ReorderBuffer_pipeline #(
 
         .mem_clear_signal(mem_clear_signal),
         .mem_set_pt(mem_set_pt),
-        .mem_next_pc(mem_next_pc)
+        .mem_next_pc(mem_next_pc),
+
+        .branch_prediction_en(branch_prediction_en),
+        .branch_prediction_pc(branch_prediction_pc),
+        .branch_prediction_bias(branch_prediction_bias),
+        .branch_prediction_taken(branch_prediction_taken),
+        .clear_btb(clear_btb)
     );
 
     always_ff @(posedge clk) begin

@@ -46,7 +46,13 @@ module exe_module_pipeline #(
     output reg [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe,
     output reg [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe,
 
-    output logic [NUM_PHYSICAL_REGISTERS-1:0] is_cached_exe
+    output logic [NUM_PHYSICAL_REGISTERS-1:0] is_cached_exe,
+
+    output logic branch_prediction_en,
+    output logic [PC_WIDTH-1:0] branch_prediction_pc,
+    output logic [PC_WIDTH-1:0] branch_prediction_bias,
+    output logic branch_prediction_taken,
+    output logic clear_btb
 
 );
     import signals::*;
@@ -106,6 +112,8 @@ module exe_module_pipeline #(
     logic [NUM_PHYSICAL_REGISTERS-1:0] is_cached;
     logic [NUM_PHYSICAL_REGISTERS-1:0][REG_DATA_WIDTH-1:0] cached_value;
 
+    assign clear_btb = i_cache_reset;
+
     // logic [EXE_WRITE_PORTS-1:0] 
     always_comb begin
         is_cached = 'b0;
@@ -149,6 +157,7 @@ module exe_module_pipeline #(
 
 
     always_ff @(posedge clk) begin
+        branch_prediction_en <= 1'b0;
         // current_status_exe_enable <= mask_exe;
         unpredicted_jump_entry_head <= head;
         unpredicted_jump_entry_addr_tmp <= exe_ports_available[0];
@@ -161,6 +170,12 @@ module exe_module_pipeline #(
             end
         end
         if (reset) begin
+            // unpredicted_jump_entry_head <= head;
+            branch_prediction_pc <= 'b0;
+            branch_prediction_bias <= 'b0;
+            branch_prediction_taken <= 1'b0;
+            // clear_btb <= 1'b0;
+
             i_cache_reset <= 1'b0;
             is_exe_ready <= 1'b0;
             enable_addr_exe <= 'b0;
@@ -299,9 +314,14 @@ module exe_module_pipeline #(
                                     end
                                 endcase
                                 if (~entries_o[addr_exe[i]].id_signals.is_pc_op) begin
+                                    branch_prediction_en <= 1'b1;
                                     //left for branch prediction
                                 end
                                 // unpredicted_jump_entry_head <= head;
+                                branch_prediction_pc <= entries_o[addr_exe[0]].if_signals.PC;
+                                branch_prediction_bias <= entries_o[addr_exe[0]].id_signals.immediate;
+                                branch_prediction_taken <= branch_taken;
+
                                 unpredicted_jump_pc_base <= entries_o[addr_exe[0]].if_signals.PC;
                                 unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[0]].id_signals.immediate : 4;
 

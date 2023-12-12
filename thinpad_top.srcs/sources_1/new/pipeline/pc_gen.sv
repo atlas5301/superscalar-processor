@@ -2,7 +2,8 @@ module pc_gen_pipeline #(
     parameter DEPTH = 64,
     parameter ADDR_WIDTH = 6,
     parameter PC_WIDTH = 32,
-    parameter IF_PORT = 2
+    parameter IF_PORT = 2,
+    parameter int BTB_SIZE = 8
 )(
     input wire clk,
     input wire reset,
@@ -30,7 +31,14 @@ module pc_gen_pipeline #(
 
     input wire mem_clear_signal, 
     input wire [ADDR_WIDTH-1:0] mem_set_pt,
-    input wire [PC_WIDTH-1:0] mem_next_pc  
+    input wire [PC_WIDTH-1:0] mem_next_pc,
+
+
+    input wire branch_prediction_en,
+    input wire [PC_WIDTH-1:0] branch_prediction_pc,
+    input wire [PC_WIDTH-1:0] branch_prediction_bias,
+    input wire branch_prediction_taken,
+    input wire clear_btb
 );
 
     // function logic [PC_WIDTH-1:0] next_pc_gen(
@@ -39,8 +47,20 @@ module pc_gen_pipeline #(
     //     logic next_pc = tmppc + 4;
     //     return next_pc;
     // endfunction
+
+    typedef enum logic[1:0] {STRONG_UNTAKEN, WEAK_UNTAKEN, WEAK_TAKEN, STRONG_TAKEN} branch_predict_t;
+
     typedef struct packed {
-        logic [31:0] PC;
+        logic enable;
+        logic [PC_WIDTH-1:0] pc;
+        logic [PC_WIDTH-1:0] target;
+        branch_predict_t prediction;
+    } btb_entry_t;
+
+    btb_entry_t [BTB_SIZE-1:0] btb_table;
+
+    typedef struct packed {
+        logic [PC_WIDTH-1:0] PC;
         logic mask;
         logic is_branch;
     } next_pc_gen_t;
@@ -49,25 +69,51 @@ module pc_gen_pipeline #(
         input logic [PC_WIDTH-1:0] tmppc,
         input logic [IF_PORT-1:0] original_mask,
         input logic [IF_PORT-1:0] is_branch,
-        input logic [IF_PORT-1:0][PC_WIDTH-1:0] pc
+        input logic [IF_PORT-1:0][PC_WIDTH-1:0] pc,
+        input btb_entry_t [BTB_SIZE-1:0] tmpbtb_table
     );
         next_pc_gen_t [IF_PORT-1:0] next_info;
+        logic is_stop_mask [IF_PORT-1:0];
+        logic is_branch_mask [IF_PORT-1:0];
+        logic is_stopped;
+
+
         for (int i=0; i<IF_PORT; i++) begin
-            next_info[i].mask = original_mask[i];
-            next_info[i].PC = pc[i];
-            next_info[i].is_branch = is_branch[i];
-        end
-        for (int i=0; i<IF_PORT; i++) begin
+            is_stop_mask[i] = 1'b0;
+            is_branch_mask[i] = 1'b0;
             if (original_mask[i]) begin
                 next_info[i].PC = tmppc + i*4+4;
                 next_info[i].is_branch = 1'b0;
                 next_info[i].mask = 1'b0;
-                if (next_info[i].is_branch) begin
-                    return next_info;
+                for (int j=0; j<BTB_SIZE; j++) begin
+                    if (tmpbtb_table[j].enable) begin
+                        if (tmpbtb_table[j].pc == tmppc + i*4) begin
+                            is_branch_mask[i] = 1'b1;
+                            if ((tmpbtb_table[j].prediction == WEAK_TAKEN) || (tmpbtb_table[j].prediction == STRONG_TAKEN)) begin
+                                next_info[i].PC = tmpbtb_table[j].target;
+                                next_info[i].is_branch = 1'b1;
+                            end else begin
+                                // next_info[i].PC = tmppc + i*4 + 4;
+                                // next_info[i].is_branch = 1'b0;
+                            end
+                            // next_info[i].mask = 1'b0;
+                        end
+                    end
                 end
             end else begin
-                return next_info;
+                is_stop_mask[i] = 1'b1;
             end
+        end
+
+        is_stopped = 1'b0;
+        for (int i=0; i<IF_PORT; i++) begin
+            if (is_stop_mask[i] == 1'b1) is_stopped = 1'b1;
+            if (is_stopped) begin
+                next_info[i].mask = original_mask[i];
+                next_info[i].PC = pc[i];
+                next_info[i].is_branch = is_branch[i];
+            end
+            if (is_branch_mask[i] == 1'b1) is_stopped = 1'b1;
         end
         return next_info;
 
@@ -81,8 +127,69 @@ module pc_gen_pipeline #(
     logic [DEPTH-1:0] inside_mask;
     logic [DEPTH-1:0] head_mask;
     logic new_if_mask_tmp;
+    logic is_exist_in_btb;
 
     assign pc_ready = ~inside_mask & ~new_if_mask_tmp;
+
+
+    logic [BTB_SIZE-1:0] new_btb_update_mask;
+    always_ff @(posedge clk) begin
+        if (reset | clear_btb) begin
+            for (int i=0; i< BTB_SIZE; i++) begin
+                btb_table[i].enable = 1'b0;
+                btb_table[i].pc = 'b0;
+                btb_table[i].target = 'b0;
+                btb_table[i].prediction = WEAK_UNTAKEN;
+            end
+            new_btb_update_mask = 1;
+        end else begin
+            if (branch_prediction_en) begin
+                is_exist_in_btb = 1'b0;
+                for (int j=0; j<BTB_SIZE; j++) begin
+                    if (btb_table[j].enable && btb_table[j].pc == branch_prediction_pc) begin
+                        is_exist_in_btb = 1'b1;
+                        if (branch_prediction_taken) begin
+                            case(btb_table[j].prediction)
+                                STRONG_TAKEN: btb_table[j].prediction <= STRONG_TAKEN;
+                                WEAK_TAKEN: btb_table[j].prediction <= STRONG_TAKEN;
+                                WEAK_UNTAKEN: btb_table[j].prediction <= WEAK_TAKEN;
+                                STRONG_UNTAKEN: btb_table[j].prediction <= WEAK_UNTAKEN;
+                                default: btb_table[j].prediction <= WEAK_TAKEN;
+                            endcase
+                        end else begin
+                            case(btb_table[j].prediction)
+                                STRONG_TAKEN: btb_table[j].prediction <= WEAK_TAKEN;
+                                WEAK_TAKEN: btb_table[j].prediction <= WEAK_UNTAKEN;
+                                WEAK_UNTAKEN: btb_table[j].prediction <= STRONG_UNTAKEN;
+                                STRONG_UNTAKEN: btb_table[j].prediction <= STRONG_UNTAKEN;
+                                default: btb_table[j].prediction <= WEAK_TAKEN;
+                            endcase
+                        end
+                    end
+                end
+
+                // if not update, then insert a new entry
+                if (~is_exist_in_btb) begin
+                    for (int j=0; j<BTB_SIZE; j++) begin
+                        if (new_btb_update_mask[j]) begin
+                            btb_table[j].enable <= 1'b1;
+                            btb_table[j].pc <= branch_prediction_pc;
+                            btb_table[j].target <= branch_prediction_pc + branch_prediction_bias;
+                            btb_table[j].prediction <= branch_prediction_taken ? WEAK_TAKEN : WEAK_UNTAKEN;
+                        end
+                    end
+
+                    for (int j=0; j<BTB_SIZE; j++) begin
+                        new_btb_update_mask[(j+1)%BTB_SIZE] <= new_btb_update_mask[j];
+                    end
+                end
+                //now, no empty entries found
+
+            end
+        end
+    end
+
+
 
     always_ff @(posedge clk) begin
         head_mask <= 'b1;
@@ -152,7 +259,8 @@ module pc_gen_pipeline #(
                         next_pc[(i+DEPTH-1)%DEPTH], 
                         tmp_mask,
                         tmp_branch,
-                        tmppcs
+                        tmppcs,
+                        btb_table
                         );
                         pc[(i+DEPTH)%DEPTH] = next_pc[(i+DEPTH-1)%DEPTH];
 
