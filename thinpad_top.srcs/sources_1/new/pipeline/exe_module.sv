@@ -82,6 +82,7 @@ module exe_module_pipeline #(
     logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_exe;
     logic unpredicted_jump;
     logic [ROB_ADDR_WIDTH-1:0] unpredicted_jump_entry_addr;
+    logic [ROB_ADDR_WIDTH-1:0] unpredicted_jump_entry_addr_tmp;
     logic [ROB_ADDR_WIDTH-1:0] unpredicted_jump_entry_head;
     logic [PC_WIDTH-1:0] unpredicted_jump_pc_base;
     logic [PC_WIDTH-1:0] unpredicted_jump_pc_additional;
@@ -150,6 +151,8 @@ module exe_module_pipeline #(
     always_ff @(posedge clk) begin
         // current_status_exe_enable <= mask_exe;
         unpredicted_jump_entry_head <= head;
+        unpredicted_jump_entry_addr_tmp <= exe_ports_available[0];
+
         for (int i=0; i< CACHE_CYCLES-1; i++) begin
             for (int j=0; j< EXE_WRITE_PORTS; j++) begin
                 wr_en_exe_cache[i+1][j] <= wr_en_exe_cache[i][j];
@@ -187,14 +190,15 @@ module exe_module_pipeline #(
             end
 
             if (unpredicted_jump) begin
+                unpredicted_jump_entry_addr <= unpredicted_jump_entry_addr_tmp;
                 exe_clear_signal <= 1'b1;
-                exe_set_pt <= unpredicted_jump_entry_addr;
+                exe_set_pt <= unpredicted_jump_entry_addr_tmp;
                 next_pc = unpredicted_jump_pc_base + unpredicted_jump_pc_additional;
                 exe_next_pc <= next_pc;
-                exe_clear_mask <= generate_clear_mask(unpredicted_jump_entry_addr, head);
+                exe_clear_mask <= generate_clear_mask(unpredicted_jump_entry_addr_tmp, head);
                 //$display("exe_clear_mask:", generate_clear_mask(unpredicted_jump_entry_addr, unpredicted_jump_entry_head));
                 // $display("jumped %h %h", unpredicted_jump_entry_addr, entries_o[unpredicted_jump_entry_addr].if_signals.PC);
-                current_status_exe[unpredicted_jump_entry_addr] <= MEM;
+                current_status_exe[unpredicted_jump_entry_addr_tmp] <= MEM;
                 unpredicted_jump <= 1'b0;
                 unpredicted_jump_release <= 1'b1;
             end else begin
@@ -297,9 +301,8 @@ module exe_module_pipeline #(
                                 if (~entries_o[addr_exe[i]].id_signals.is_pc_op) begin
                                     //left for branch prediction
                                 end
-                                unpredicted_jump_entry_addr <= addr_exe[0];
                                 // unpredicted_jump_entry_head <= head;
-                                unpredicted_jump_pc_base = entries_o[addr_exe[0]].if_signals.PC;
+                                unpredicted_jump_pc_base <= entries_o[addr_exe[0]].if_signals.PC;
                                 unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[0]].id_signals.immediate : 4;
 
 
