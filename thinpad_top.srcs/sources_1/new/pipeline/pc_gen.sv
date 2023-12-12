@@ -3,7 +3,7 @@ module pc_gen_pipeline #(
     parameter ADDR_WIDTH = 6,
     parameter PC_WIDTH = 32,
     parameter IF_PORT = 2,
-    parameter int BTB_SIZE = 8
+    parameter int BTB_SIZE = 3
 )(
     input wire clk,
     input wire reset,
