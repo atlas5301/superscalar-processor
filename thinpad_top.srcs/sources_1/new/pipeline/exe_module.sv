@@ -9,7 +9,7 @@ module exe_module_pipeline #(
     parameter int EXE_WRITE_PORTS = 4, 
     parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
     parameter int NUM_PHYSICAL_REGISTERS = 64,
-    parameter int CACHE_CYCLES = 3,
+    parameter int CACHE_CYCLES = 2,
     parameter int SHIFT_WIDTH=5
 ) (
     input wire clk,
@@ -125,6 +125,7 @@ module exe_module_pipeline #(
         for (int i=0; i< CACHE_CYCLES; i++) begin
             for (int j=0; j< EXE_WRITE_PORTS; j++) begin
                 if (wr_en_exe_cache[i][j]) begin
+                    is_cached[wr_addr_exe_cache[i][j]] = 1'b1;
                     cached_value[wr_addr_exe_cache[i][j]] = wr_data_exe_cache[i][j];
                 end
             end
@@ -316,8 +317,9 @@ module exe_module_pipeline #(
                                 wr_en_exe[i] <= 1'b1;
                                 exe_wr_enable[i] <= 1'b1;
                                 wr_en_exe_cache[0][i] <= 1'b1;
+                                current_status_exe[addr_exe[i]] <= WB;
                             end
-                            $display("exe_module: %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
+                            //$display("exe_module: %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // if ((entries_o[addr_exe[i]].if_signals.PC == 32'h80000074)) begin
                             //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // end

@@ -103,9 +103,10 @@ module thinpad_top (
                        // 后级电路复位信号应当由它生成（见下）
   );
 
+  logic global_clock; 
   logic reset_of_clk10M;
   // 异步复位，同步释放，将 locked 信号转为后级电路的复位 reset_of_clk10M
-  always_ff @(posedge clk_10M or negedge locked) begin
+  always_ff @(posedge global_clock or negedge locked) begin
     if (~locked) reset_of_clk10M <= 1'b1;
     else reset_of_clk10M <= 1'b0;
   end
@@ -114,12 +115,11 @@ module thinpad_top (
 //   logic global_clock = clk_10M;
 //   logic global_reset = reset_of_clk10M;
 
-  logic global_clock; 
 //   assign global_clock = clk_20M;
 //   assign global_clock = clk_10M;
-  assign global_clock = clk_30M;
+//   assign global_clock = clk_30M;
 //   assign global_clock = clk_35M;
-//   assign global_clock = clk_40M;
+  assign global_clock = clk_30M;
 //   assign global_clock = clk_50M;
   logic global_reset; 
   assign global_reset = reset_of_clk10M;
@@ -173,7 +173,7 @@ module thinpad_top (
     localparam int ID_PORT = 2;
     localparam int OF_PORT = 6;
     localparam int EXE_PORT = 2;
-    localparam int MEM_PORT = 2;
+    localparam int MEM_PORT = 1;
     localparam int WB_PORT = 2;
 
     localparam int CACHE_WAYS = 4;
@@ -186,7 +186,7 @@ module thinpad_top (
     localparam int NUM_WRITE_PORTS = WB_PORT;       // Number of write ports
 
     localparam int NUM_LOGICAL_REGISTERS = 32;
-    localparam int REG_ASSIGN_SET_SIZE = 16;
+    localparam int REG_ASSIGN_SET_SIZE = 20;
     localparam int REG_ASSIGN_SET_NUM = 3; 
     localparam int NUM_PHYSICAL_REGISTERS = REG_ASSIGN_SET_NUM * REG_ASSIGN_SET_SIZE;
     localparam int LOGICAL_REGISTERS_ADDR_LEN = 5;
@@ -372,7 +372,9 @@ rename_register_mapping_table #(
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .OF_PORT(OF_PORT),
-    .EXE_PORT(EXE_PORT)
+    .EXE_PORT(EXE_PORT),
+    .ID_PORT(ID_PORT),
+    .IF_PORT(IF_PORT)
 ) rename_register_mapping_table_inst (
     .clk(global_clock),
     .reset(global_reset),
