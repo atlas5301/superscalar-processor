@@ -6,14 +6,16 @@ module of_module_pipeline #(
     parameter ROB_ADDR_WIDTH = 6,
     parameter OF_PORT = 2,
     parameter REG_DATA_WIDTH = 32,         
-    parameter REG_ADDR_WIDTH = 5           
+    parameter PHYSICAL_REGISTERS_ADDR_LEN = 5           
 ) (
 
     input wire clk,
     input wire reset,
 
     input wire [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available,    //delivered ports for OF stage
+    input wire [OF_PORT-1:0] of_port_is_b,
     input wire [OF_PORT-1:0] of_enable,   //status of the delivered ports for OF stage 
+    input wire [DEPTH-1:0] is_not_at_of,
     output logic of_stall,     //whether the pipeline should be stalled.  
     output logic is_of_ready,     // is OF ready for restart after pipeline reset
     output of_signals_t of_entries_i [DEPTH-1:0],   //OF generated signals
@@ -26,8 +28,8 @@ module of_module_pipeline #(
     input wire is_ready,
     input wire is_pipeline_stall,
 
-    output reg [2*OF_PORT-1:0][REG_ADDR_WIDTH-1:0] rd_addr,
-    input wire [2*OF_PORT-1:0][REG_DATA_WIDTH-1:0] rd_data
+    output reg [OF_PORT-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] rd_addr,
+    input wire [OF_PORT-1:0][REG_DATA_WIDTH-1:0] rd_data
 );
     import signals::*;
     logic [DEPTH-1:0] mask_of;
@@ -36,6 +38,7 @@ module of_module_pipeline #(
     logic [OF_PORT-1:0] enable_addr_of2;   
     logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_of;
     logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_of2;
+    logic [OF_PORT-1:0] of_port_is_b_copy;
     
 
     // assign current_status_of_enable = mask_of | mask_of2;
@@ -56,27 +59,57 @@ module of_module_pipeline #(
     logic is_stall_cycle2;
 
     always_ff @(posedge clk) begin
-        current_status_of_enable <= mask_of | mask_of2;
+        for (int i=0; i< DEPTH;i++) begin
+            if (is_not_at_of[i]) begin
+                of_entries_i[i].prepared_a <= 1'b0;
+                of_entries_i[i].prepared_b <= 1'b0;
+                of_entries_i[i].pending_a <= 1'b0;
+                of_entries_i[i].pending_b <= 1'b0;
+            end
+        end
+
+        current_status_of_enable <= 'b0;
+        // current_status_of_enable <= mask_of | mask_of2;
         if (reset) begin
             is_of_ready = 1'b0;
             enable_addr_of = 'b0;
             enable_addr_of2 = 'b0;
+            of_port_is_b_copy = 'b0;
             is_stall_cycle2 <= 1'b0;
             of_stall <= 1'b0;
             current_status_of <= '{DEPTH{IF}};
         end else begin
             for (int i=0;i<OF_PORT;i++) begin
                 if (enable_addr_of[i]) begin
-                    of_entries_i[addr_of[i]].rf_rdata_a <= rd_data[i*2];
-                    of_entries_i[addr_of[i]].rf_rdata_b <= rd_data[i*2+1];
-                    current_status_of[addr_of[i]] <= EXE;
+                    if (of_port_is_b_copy[i]) begin
+                        of_entries_i[addr_of[i]].rf_rdata_b <= rd_data[i];
+                        of_entries_i[addr_of[i]].prepared_b <= 1'b1;
+                    end else begin
+                        of_entries_i[addr_of[i]].rf_rdata_a <= rd_data[i];
+                        of_entries_i[addr_of[i]].prepared_a <= 1'b1;
+                    end
+                    
+                    // current_status_of[addr_of[i]] <= EXE;
+
+                    // $display("OF: PC: %h, is_B:%d, A/B: %h, tagA: %d: tagB: %d tag_dst: %d", 
+                    // entries_o[addr_of[i]].if_signals.PC, 
+                    // of_port_is_b_copy[i],
+                    // rd_data[i], 
+                    // entries_o[addr_of[i]].id_signals.src_rf_tag_a,
+                    // entries_o[addr_of[i]].id_signals.src_rf_tag_b,
+                    // entries_o[addr_of[i]].id_signals.dst_rf_tag);
+                    // if (entries_o[addr_of[i]].if_signals.PC == 32'h80000074) begin
+                    //     //$display("0074-OF2 %d", i);
+                    // end
                 end
             end
+            // $display("separate!!!!!");
             addr_of2 = addr_of;
             enable_addr_of2 = enable_addr_of;
             enable_addr_of = 'b0;
             if (is_pipeline_stall) begin
                 is_of_ready <= 1'b1;
+                // $display("stall_of");
                 if (is_ready) begin
                     of_stall <= 1'b0;
                 end
@@ -86,27 +119,33 @@ module of_module_pipeline #(
 
                 addr_of = of_ports_available;
                 enable_addr_of = of_enable;
+                of_port_is_b_copy = of_port_is_b;
                 for (int i=0;i<OF_PORT;i++) begin
                     if (enable_addr_of[i]) begin
-                        rd_addr[i*2] <= entries_o[addr_of[i]].id_signals.rr_a;
-                        rd_addr[i*2+1] <= entries_o[addr_of[i]].id_signals.rr_b;
-                        current_status_of[addr_of[i]] <= OF2;
+                        if (of_port_is_b_copy[i]) begin
+                            rd_addr[i] <= entries_o[addr_of[i]].id_signals.src_rf_tag_b;
+                            of_entries_i[addr_of[i]].pending_b <= 1'b1;
+                        end else begin
+                            rd_addr[i] <= entries_o[addr_of[i]].id_signals.src_rf_tag_a;
+                            of_entries_i[addr_of[i]].pending_a <= 1'b1;
+                        end
                     end
                 end
 
             end
 
         end
-        mask_of = 'b0;
-        mask_of2 = 'b0;
-        for (int j = 0; j < OF_PORT; j = j + 1) begin
-            if (enable_addr_of[j]) begin
-                mask_of[addr_of[j]] = 1'b1;
-            end
-            if (enable_addr_of2[j]) begin
-                mask_of2[addr_of2[j]] = 1'b1;
-            end
-        end
+        // mask_of = 'b0;
+        // mask_of2 = 'b0;
+        // for (int j = 0; j < OF_PORT; j = j + 1) begin
+        //     if (enable_addr_of[j]) begin
+        //         mask_of[addr_of[j]] = 1'b1;
+        //     end
+        //     if (enable_addr_of2[j]) begin
+        //         mask_of2[addr_of2[j]] = 1'b1;
+        //     end
+        // end
+        // current_status_of_enable <= mask_of | mask_of2;
     end
 
 
@@ -121,7 +160,10 @@ module wb_module_pipeline  #(
     parameter ROB_ADDR_WIDTH = 6,
     parameter WB_PORT = 2,
     parameter REG_DATA_WIDTH = 32,         
-    parameter REG_ADDR_WIDTH = 5 
+
+    parameter int LOGICAL_REGISTERS_ADDR_LEN = 5,
+    parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
+    parameter int SUBMIT_PORTS = 4
 ) (
 
     input wire clk,
@@ -141,9 +183,13 @@ module wb_module_pipeline  #(
     input wire is_ready,
     input wire is_pipeline_stall,
 
-    output reg [WB_PORT-1:0][REG_ADDR_WIDTH-1:0] wr_addr,
+    output reg [WB_PORT-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr,
     output reg [WB_PORT-1:0][REG_DATA_WIDTH-1:0] wr_data,
-    output reg [WB_PORT-1:0] wr_en
+    output reg [WB_PORT-1:0] wr_en,
+
+    output logic [SUBMIT_PORTS-1:0] submit_regs_enable,
+    output logic [SUBMIT_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] submit_logical_regs,
+    output logic [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs
 );
     import signals::*;
     logic [DEPTH-1:0] mask_wb;
@@ -161,20 +207,29 @@ module wb_module_pipeline  #(
                 mask_wb[addr_wb[j]] = 1'b1;
             end
         end
+        current_status_wb_enable = mask_wb;
     end
 
 
     always_ff @(posedge clk) begin
-        current_status_wb_enable <= mask_wb;
+        // current_status_wb_enable <= mask_wb;
         if (reset) begin
             is_wb_ready = 1'b0;
             enable_addr_wb <= 'b0;
             wr_en <= 'b0;
             current_status_wb <= '{DEPTH{IF}};
             next_head <= 0;
+            submit_regs_enable <= 'b0;
+
+            for (int i=0; i<WB_PORT; i++) begin
+                wr_addr[i] <= 'b0;
+                wr_data[i] <= 'b0;
+            end
 
         end else begin
+            submit_regs_enable <= 'b0;
             if (is_pipeline_stall) begin
+                // $display("stall_wb");
                 is_wb_ready <= 1'b1;
                 enable_addr_wb <= 'b0;
                 wr_en <= 'b0;
@@ -189,13 +244,18 @@ module wb_module_pipeline  #(
                 end
                 for (int i=0;i<WB_PORT;i++) begin
                     if (enable_addr_wb[i]) begin
-                        wr_addr[i] <= entries_o[addr_wb[i]].id_signals.rr_dst;
-                        wr_data[i] <= entries_o[addr_wb[i]].mem_signals.rf_wdata_mem;
-                        wr_en[i] <= 1'b1;
+                        // wr_addr[i] <= entries_o[addr_wb[i]].id_signals.dst_rf_tag;
+                        // wr_data[i] <= entries_o[addr_wb[i]].mem_signals.rf_wdata_mem;
+                        // wr_en[i] <= 1'b1;
                         current_status_wb[addr_wb[i]] <= IF;
                         next_head <= (addr_wb[i]+1)%DEPTH;
 
                         debug_PC <= entries_o[addr_wb[i]].if_signals.PC;
+
+                        submit_regs_enable[i] <= 1'b1;
+                        submit_logical_regs[i] <= entries_o[addr_wb[i]].id_signals.rr_dst;
+                        submit_physical_regs[i] <= entries_o[addr_wb[i]].id_signals.dst_rf_tag;
+
                     end else begin
                         break;
                     end

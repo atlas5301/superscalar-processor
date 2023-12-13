@@ -32,9 +32,9 @@ package signals;
         logic [4:0]  rr_a;          // Renamed register a
         logic [4:0]  rr_b;          // Renamed register b
         logic [4:0]  rr_dst;        // Renamed register destination
-        logic [3:0]  src_rf_tag_a;  // Source register file tag for operand A
-        logic [3:0]  src_rf_tag_b;  // Source register file tag for operand B
-        logic [3:0]  dst_rf_tag;    // Destination register file tag
+        logic [5:0]  src_rf_tag_a;  // Source register file tag for operand A
+        logic [5:0]  src_rf_tag_b;  // Source register file tag for operand B
+        logic [5:0]  dst_rf_tag;    // Destination register file tag
 
     } id_signals_t;
 
@@ -42,11 +42,16 @@ package signals;
     typedef struct {
         logic [31:0] rf_rdata_a;    //in load/store instructions, will be used to store original addr
         logic [31:0] rf_rdata_b;    //in store instructions, will be used to store the data to write
+        logic prepared_a;
+        logic pending_a;
+        logic prepared_b;
+        logic pending_b;
     } of_signals_t;
 
     // EXE Stage
     typedef struct {
         logic [31:0] rf_wdata_exe;  //in load/store instructions, will be used to store final addr
+        logic [31:0] final_rf_rdata_b;
     } exe_signals_t;
 
     // MEM Stage

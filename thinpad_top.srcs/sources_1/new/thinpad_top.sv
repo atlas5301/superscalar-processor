@@ -87,13 +87,16 @@ module thinpad_top (
   /* =========== Demo code begin =========== */
 
   // PLL 分频示例
-  logic locked, clk_10M, clk_20M;
+  logic locked, clk_10M, clk_20M, clk_40M, clk_35M, clk_30M;
   pll_example clock_gen (
       // Clock in ports
       .clk_in1(clk_50M),  // 外部时钟输入
       // Clock out ports
       .clk_out1(clk_10M),  // 时钟输出 1，频率在 IP 配置界面中设置
       .clk_out2(clk_20M),  // 时钟输出 2，频率在 IP 配置界面中设置
+      .clk_out3(clk_40M),
+      .clk_out4(clk_35M),
+      .clk_out5(clk_30M),
       // Status and control signals
       .reset(reset_btn),  // PLL 复位输入
       .locked(locked)  // PLL 锁定指示输出，"1"表示时钟稳定，
@@ -112,11 +115,16 @@ module thinpad_top (
 //   logic global_reset = reset_of_clk10M;
 
   logic global_clock; 
-  assign global_clock = clk_20M;
+//   assign global_clock = clk_20M;
+//   assign global_clock = clk_10M;
+  assign global_clock = clk_30M;
+//   assign global_clock = clk_35M;
+//   assign global_clock = clk_40M;
 //   assign global_clock = clk_50M;
   logic global_reset; 
   assign global_reset = reset_of_clk10M;
 //   assign global_reset = reset_btn;
+  localparam int CLK_FREQ = 30_000_000;
 
   // 不使用内存、串口时，禁用其使能信号
 
@@ -163,15 +171,31 @@ module thinpad_top (
     localparam int REG_ADDR_LEN = 5;
     localparam int IF_PORT = 2;
     localparam int ID_PORT = 2;
-    localparam int OF_PORT = 2;
+    localparam int OF_PORT = 6;
     localparam int EXE_PORT = 2;
     localparam int MEM_PORT = 2;
     localparam int WB_PORT = 2;
 
+    localparam int CACHE_WAYS = 4;
+    localparam int CACHE_WIDTH = 32;
+    localparam int CACHE_ENABLE = 1;
+
     localparam int REG_DATA_WIDTH = DATA_WIDTH;          // Bitwidth of data
     localparam int REG_ADDR_WIDTH = REG_ADDR_LEN;           // Bitwidth of address, supports 2^N registers by default
-    localparam int NUM_READ_PORTS = OF_PORT * 2;       // Number of read ports
+    localparam int NUM_READ_PORTS = OF_PORT;       // Number of read ports
     localparam int NUM_WRITE_PORTS = WB_PORT;       // Number of write ports
+
+    localparam int NUM_LOGICAL_REGISTERS = 32;
+    localparam int REG_ASSIGN_SET_SIZE = 16;
+    localparam int REG_ASSIGN_SET_NUM = 3; 
+    localparam int NUM_PHYSICAL_REGISTERS = REG_ASSIGN_SET_NUM * REG_ASSIGN_SET_SIZE;
+    localparam int LOGICAL_REGISTERS_ADDR_LEN = 5;
+    localparam int PHYSICAL_REGISTERS_ADDR_LEN = 6;
+    localparam int ASSIGN_PORTS = ID_PORT;
+    localparam int SUBMIT_PORTS = WB_PORT;
+    localparam int EXE_WRITE_PORTS = EXE_PORT;
+    localparam int MEM_WRITE_PORTS = 1;
+
 
     logic enable_IF;
     logic write_IF;
@@ -240,6 +264,8 @@ logic [DEPTH-1:0][PC_WIDTH-1:0] PC_IF;
 logic [DEPTH-1:0] PC_ready;
 logic [DEPTH-1:0] is_branch;
 
+logic i_cache_reset;
+
 logic [ID_PORT-1:0][ROB_ADDR_WIDTH-1:0] id_ports_available;
 logic [ID_PORT-1:0] id_enable;
 logic id_clear_signal;
@@ -252,7 +278,9 @@ stage_t [DEPTH-1:0] current_status_id;
 logic [DEPTH-1:0] current_status_id_enable;
 
 logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available;
+logic [OF_PORT-1:0] of_port_is_b;
 logic [OF_PORT-1:0] of_enable;
+logic [DEPTH-1:0] is_not_at_of;
 logic of_stall;
 wire is_of_ready;
 of_signals_t of_entries_i [DEPTH-1:0] ;
@@ -261,6 +289,8 @@ logic [DEPTH-1:0] current_status_of_enable;
 
 logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available;
 logic [EXE_PORT-1:0] exe_enable;
+logic [EXE_PORT-1:0] exe_is_ready_a;
+logic [EXE_PORT-1:0] exe_is_ready_b;
 logic exe_clear_signal;
 logic [DEPTH-1:0] exe_clear_mask;
 logic [ROB_ADDR_WIDTH-1:0] exe_set_pt;
@@ -290,10 +320,104 @@ stage_t [DEPTH-1:0] current_status_wb;
 logic [DEPTH-1:0] current_status_wb_enable;
 
 riscv_pipeline_signals_t entries_o [DEPTH-1:0];
+stage_t [DEPTH-1:0] current_status;
+stage_t [DEPTH-1:0] status;
+logic [DEPTH-1:0] is_at_exe_fast;
 
 wire is_ready;
 wire is_pipeline_stall;
 logic [ROB_ADDR_WIDTH-1:0] head;
+
+logic branch_prediction_en;
+logic [PC_WIDTH-1:0] branch_prediction_pc;
+logic [PC_WIDTH-1:0] branch_prediction_bias;
+logic branch_prediction_taken;
+logic clear_btb;
+
+
+logic [NUM_LOGICAL_REGISTERS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] latest_table_out;
+
+logic [ASSIGN_PORTS-1:0] available_regs_enable;
+logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] available_physical_regs;
+
+logic [ASSIGN_PORTS-1:0] assign_regs_enable;
+logic [ASSIGN_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] assign_logical_regs;
+logic [ASSIGN_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] assign_physical_regs;
+
+logic [SUBMIT_PORTS-1:0] submit_regs_enable;
+logic [SUBMIT_PORTS-1:0][LOGICAL_REGISTERS_ADDR_LEN-1:0] submit_logical_regs;
+logic [SUBMIT_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] submit_physical_regs;
+
+logic [NUM_PHYSICAL_REGISTERS-1:0] reg_valid;
+
+logic [EXE_WRITE_PORTS-1:0] exe_wr_enable;
+logic [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] exe_wr_physical_addr;
+
+logic [NUM_PHYSICAL_REGISTERS-1:0] is_cached_exe;
+
+logic [MEM_WRITE_PORTS-1:0] mem_wr_enable;
+logic [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] mem_wr_physical_addr;
+
+rename_register_mapping_table #(
+    .NUM_LOGICAL_REGISTERS(NUM_LOGICAL_REGISTERS),
+    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS),
+    .REG_ASSIGN_SET_NUM(REG_ASSIGN_SET_NUM),
+    .REG_ASSIGN_SET_SIZE(REG_ASSIGN_SET_SIZE),
+    .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .ASSIGN_PORTS(ASSIGN_PORTS),
+    .SUBMIT_PORTS(SUBMIT_PORTS),
+    .EXE_WRITE_PORTS(EXE_WRITE_PORTS),
+    .MEM_WRITE_PORTS(MEM_WRITE_PORTS),
+    .DEPTH(DEPTH),
+    .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
+    .OF_PORT(OF_PORT),
+    .EXE_PORT(EXE_PORT)
+) rename_register_mapping_table_inst (
+    .clk(global_clock),
+    .reset(global_reset),
+    .re_map(is_pipeline_stall),
+    .latest_table_out(latest_table_out),
+
+    .available_regs_enable(available_regs_enable),
+    .available_physical_regs(available_physical_regs),
+
+    .assign_regs_enable(assign_regs_enable),
+    // .assign_logical_regs(assign_logical_regs),
+    .assign_physical_regs(assign_physical_regs),
+
+    .submit_regs_enable(submit_regs_enable),
+    .submit_logical_regs(submit_logical_regs),
+    .submit_physical_regs(submit_physical_regs),
+
+    .entries_o(entries_o),
+    .current_status(current_status),
+    .status(status),
+    .is_at_exe_fast(is_at_exe_fast),
+    .head(head),
+
+
+    .reg_valid(reg_valid),
+
+    .exe_wr_enable(exe_wr_enable),
+    .exe_wr_physical_addr(exe_wr_physical_addr),
+
+    .mem_wr_enable(mem_wr_enable),
+    .mem_wr_physical_addr(mem_wr_physical_addr),  
+
+    .of_ports_available(of_ports_available),    //delivered ports for OF stage
+    .of_port_is_b(of_port_is_b),
+    .of_enable(of_enable),   //status of the delivered ports for OF stage 
+    .is_not_at_of(is_not_at_of),
+
+    .exe_ports_available(exe_ports_available),    //delivered ports for EXE stage
+    .exe_enable(exe_enable),   //status of the delivered ports for EXE stage  
+    .exe_is_ready_a(exe_is_ready_a),
+    .exe_is_ready_b(exe_is_ready_b),
+    .is_cached_exe(is_cached_exe)
+);
+
+
 
 
 ReorderBuffer_pipeline #(
@@ -301,7 +425,6 @@ ReorderBuffer_pipeline #(
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .NUM_REGS(NUM_REGS),
-    .REG_ADDR_LEN(REG_ADDR_LEN),
     .IF_PORT(IF_PORT),
     .ID_PORT(ID_PORT),
     .OF_PORT(OF_PORT),
@@ -337,16 +460,14 @@ ReorderBuffer_pipeline #(
 .current_status_id(current_status_id),
 .current_status_id_enable(current_status_id_enable),
 
-.of_ports_available(of_ports_available),
-.of_enable(of_enable),
 .of_stall(of_stall),
 .is_of_ready(is_of_ready),
 .of_entries_i(of_entries_i),
 .current_status_of(current_status_of),
 .current_status_of_enable(current_status_of_enable),
 
-.exe_ports_available(exe_ports_available),
-.exe_enable(exe_enable),
+// .exe_ports_available(exe_ports_available),
+// .exe_enable(exe_enable),
 .exe_clear_signal(exe_clear_signal),
 .exe_clear_mask(exe_clear_mask),
 .exe_set_pt(exe_set_pt),
@@ -376,9 +497,17 @@ ReorderBuffer_pipeline #(
 .current_status_wb_enable(current_status_wb_enable),
 
 .entries_o(entries_o),
+.current_status(current_status),
+.status(status),
+.is_at_exe_fast(is_at_exe_fast),
 .is_ready(is_ready),
 .is_pipeline_stall(is_pipeline_stall),
-.head(head)
+.head(head),
+.branch_prediction_en(branch_prediction_en),
+.branch_prediction_pc(branch_prediction_pc),
+.branch_prediction_bias(branch_prediction_bias),
+.branch_prediction_taken(branch_prediction_taken),
+.clear_btb(clear_btb)
 );
 
 if_module_pipeline #(
@@ -387,7 +516,10 @@ if_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .IF_PORT(IF_PORT),
     .ADDR_WIDTH(32), // Address width
-    .DATA_WIDTH(32)  // Data width
+    .DATA_WIDTH(32),  // Data width
+    .CACHE_WAYS(CACHE_WAYS),
+    .CACHE_WIDTH(CACHE_WIDTH),
+    .CACHE_ENABLE(CACHE_ENABLE)
 ) if_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -408,6 +540,7 @@ if_module_pipeline #(
     .entries_o(entries_o),
     .is_ready(is_ready),
     .is_pipeline_stall(is_pipeline_stall),
+    .i_cache_reset(i_cache_reset),
     .enable_IF(enable_IF),
     .write_IF(write_IF),
     .address_IF(address_IF),
@@ -424,7 +557,10 @@ mem_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .MEM_PORT(MEM_PORT),
     .ADDR_WIDTH(32), // Address width
-    .DATA_WIDTH(32)  // Data width
+    .DATA_WIDTH(32), // Data width
+    .REG_DATA_WIDTH(REG_DATA_WIDTH),
+    .MEM_WRITE_PORTS(MEM_WRITE_PORTS), 
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN)
 ) mem_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -448,14 +584,26 @@ mem_module_pipeline #(
     .write_data_MEM(write_data_MEM),
     .sel_MEM(sel_MEM),
     .read_data_MEM(read_data_MEM),
-    .finished_MEM(finished_MEM)
+    .finished_MEM(finished_MEM),
+
+    .mem_wr_enable(mem_wr_enable),
+    .mem_wr_physical_addr(mem_wr_physical_addr),
+
+    .wr_en_mem(wr_en_mem),
+    .wr_addr_mem(wr_addr_mem),
+    .wr_data_mem(wr_data_mem)
 );
 
 id_module_pipeline #(
     .PC_WIDTH(PC_WIDTH),
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
-    .ID_PORT(ID_PORT)
+    .ID_PORT(ID_PORT),
+    .NUM_LOGICAL_REGISTERS(NUM_LOGICAL_REGISTERS),
+    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS),
+    .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .ASSIGN_PORTS(ASSIGN_PORTS)
 ) id_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -477,22 +625,41 @@ id_module_pipeline #(
     .entries_o(entries_o),
 
     .is_ready(is_ready),
-    .is_pipeline_stall(is_pipeline_stall)
+    .is_pipeline_stall(is_pipeline_stall),
+
+    .latest_table_out(latest_table_out),
+
+    .available_regs_enable(available_regs_enable),
+    .available_physical_regs(available_physical_regs),
+
+    .assign_regs_enable(assign_regs_enable),
+    // .assign_logical_regs(assign_logical_regs),
+    .assign_physical_regs(assign_physical_regs)
 );
 
 
 logic [NUM_WRITE_PORTS-1:0] wr_en;
-logic [NUM_WRITE_PORTS-1:0][REG_ADDR_WIDTH-1:0] wr_addr;
+logic [NUM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr;
 logic [NUM_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data;
-logic [NUM_READ_PORTS-1:0][REG_ADDR_WIDTH-1:0] rd_addr;
+logic [NUM_READ_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] rd_addr;
 logic [NUM_READ_PORTS-1:0][REG_DATA_WIDTH-1:0] rd_data;
+
+reg [EXE_WRITE_PORTS-1:0] wr_en_exe;
+reg [EXE_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_exe;
+reg [EXE_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_exe;
+
+reg [MEM_WRITE_PORTS-1:0] wr_en_mem;
+reg [MEM_WRITE_PORTS-1:0][PHYSICAL_REGISTERS_ADDR_LEN-1:0] wr_addr_mem;
+reg [MEM_WRITE_PORTS-1:0][REG_DATA_WIDTH-1:0] wr_data_mem;
 
 
 register_file_pipeline #(
     .REG_DATA_WIDTH(DATA_WIDTH),          // Bitwidth of data
-    .REG_ADDR_WIDTH(REG_ADDR_LEN),           // Bitwidth of address, supports 2^N registers by default
-    .NUM_READ_PORTS(OF_PORT * 2),       // Number of read ports
-    .NUM_WRITE_PORTS(WB_PORT)      // Number of write ports
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),           // Bitwidth of address, supports 2^N registers by default
+    .NUM_READ_PORTS(OF_PORT),       // Number of read ports
+    .NUM_WRITE_PORTS(WB_PORT),      // Number of write ports
+    .EXE_WRITE_PORTS(EXE_WRITE_PORTS),
+    .MEM_WRITE_PORTS(MEM_WRITE_PORTS)
 ) register_file_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -500,7 +667,15 @@ register_file_pipeline #(
     .wr_addr(wr_addr),
     .wr_data(wr_data),
     .rd_addr(rd_addr),
-    .rd_data(rd_data)
+    .rd_data(rd_data),
+
+    .wr_en_exe(wr_en_exe),
+    .wr_addr_exe(wr_addr_exe),
+    .wr_data_exe(wr_data_exe),
+
+    .wr_en_mem(wr_en_mem),
+    .wr_addr_mem(wr_addr_mem),
+    .wr_data_mem(wr_data_mem)
     // output reg [REG_DATA_WIDTH-1:0] debug
 );
 
@@ -510,13 +685,15 @@ of_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .OF_PORT(OF_PORT),
     .REG_DATA_WIDTH(DATA_WIDTH),         
-    .REG_ADDR_WIDTH(REG_ADDR_LEN)    
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN)    
 ) of_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
 
     .of_ports_available(of_ports_available),
+    .of_port_is_b(of_port_is_b),
     .of_enable(of_enable),
+    .is_not_at_of(is_not_at_of),
     .of_stall(of_stall),
     .is_of_ready(is_of_ready),
     .of_entries_i(of_entries_i),
@@ -538,7 +715,9 @@ wb_module_pipeline #(
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .WB_PORT(WB_PORT),
     .REG_DATA_WIDTH(DATA_WIDTH),         
-    .REG_ADDR_WIDTH(REG_ADDR_LEN)    
+    .LOGICAL_REGISTERS_ADDR_LEN(LOGICAL_REGISTERS_ADDR_LEN),
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .SUBMIT_PORTS(SUBMIT_PORTS)  
 ) wb_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
@@ -558,7 +737,11 @@ wb_module_pipeline #(
 
     .wr_addr(wr_addr),
     .wr_data(wr_data),
-    .wr_en(wr_en)
+    .wr_en(wr_en),
+
+    .submit_regs_enable(submit_regs_enable),
+    .submit_logical_regs(submit_logical_regs),
+    .submit_physical_regs(submit_physical_regs)
 );
 
 exe_module_pipeline #(
@@ -566,13 +749,18 @@ exe_module_pipeline #(
     .DEPTH(DEPTH),
     .ROB_ADDR_WIDTH(ROB_ADDR_WIDTH),
     .EXE_PORT(EXE_PORT),
-    .REG_DATA_WIDTH(DATA_WIDTH)        
+    .REG_DATA_WIDTH(DATA_WIDTH),
+    .EXE_WRITE_PORTS(EXE_WRITE_PORTS), 
+    .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
+    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS)      
 ) exe_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),
 
     .exe_ports_available(exe_ports_available),
     .exe_enable(exe_enable),
+    .exe_is_ready_a(exe_is_ready_a),
+    .exe_is_ready_b(exe_is_ready_b),
     .exe_clear_signal(exe_clear_signal),
     .exe_clear_mask(exe_clear_mask),
     .exe_set_pt(exe_set_pt),
@@ -581,10 +769,26 @@ exe_module_pipeline #(
     .exe_entries_i(exe_entries_i),
     .current_status_exe(current_status_exe),
     .current_status_exe_enable(current_status_exe_enable),
+    .i_cache_reset(i_cache_reset),
     .entries_o(entries_o),
     .is_ready(is_ready),
     .is_pipeline_stall(is_pipeline_stall),
-    .head(head)
+    .head(head),
+
+    .exe_wr_enable(exe_wr_enable),
+    .exe_wr_physical_addr(exe_wr_physical_addr),
+
+    .wr_en_exe(wr_en_exe),
+    .wr_addr_exe(wr_addr_exe),
+    .wr_data_exe(wr_data_exe),
+
+    .is_cached_exe(is_cached_exe),
+
+    .branch_prediction_en(branch_prediction_en),
+    .branch_prediction_pc(branch_prediction_pc),
+    .branch_prediction_bias(branch_prediction_bias),
+    .branch_prediction_taken(branch_prediction_taken),
+    .clear_btb(clear_btb)
 );
 
 
@@ -743,7 +947,7 @@ exe_module_pipeline #(
   // 串口控制器模块
   // NOTE: 如果修改系统时钟频率，也需要修改此处的时钟频率参数
   uart_controller #(
-      .CLK_FREQ(20_000_000),
+      .CLK_FREQ(CLK_FREQ),
       .BAUD    (115200)
   ) uart_controller (
       .clk_i(global_clock),

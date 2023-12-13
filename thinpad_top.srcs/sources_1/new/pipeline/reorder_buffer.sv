@@ -5,7 +5,6 @@ module ReorderBuffer_pipeline #(
     parameter DEPTH = 64,
     parameter ROB_ADDR_WIDTH = 6,
     parameter NUM_REGS = 32,
-    parameter REG_ADDR_LEN = 5,
     parameter IF_PORT = 2,
     parameter ID_PORT = 2,
     parameter OF_PORT = 2,
@@ -47,8 +46,6 @@ module ReorderBuffer_pipeline #(
     input wire [DEPTH-1:0] current_status_id_enable,   //ID status updates enable
 
     // Interface with OF(Operands Fetch) stage, NEED ROB REG CONFLIC CONTROL.
-    output logic [OF_PORT-1:0][ROB_ADDR_WIDTH-1:0] of_ports_available,    //delivered ports for OF stage
-    output logic [OF_PORT-1:0] of_enable,   //status of the delivered ports for OF stage  
     input wire of_stall,     //whether the pipeline should be stalled.
     input wire is_of_ready,     // is OF ready for restart after pipeline reset
     input wire of_signals_t of_entries_i [DEPTH-1:0],   //OF generated signals
@@ -56,8 +53,8 @@ module ReorderBuffer_pipeline #(
     input wire [DEPTH-1:0] current_status_of_enable,   //OF status updates enable
 
     // Interface with EXE stage, CONFLICT CONTROL IN EXE
-    output logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
-    output logic [EXE_PORT-1:0] exe_enable,   //status of the delivered ports for EXE stage
+    // output logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] exe_ports_available,    //delivered ports for EXE stage
+    // output logic [EXE_PORT-1:0] exe_enable,   //status of the delivered ports for EXE stage
     input wire exe_clear_signal,     //whether instructions should be emptied from buffer.
     input wire [DEPTH-1:0] exe_clear_mask,    //the address of instructions in ROB to be emptied.
     input wire [ROB_ADDR_WIDTH-1:0] exe_set_pt,   //the entry to set next_PC
@@ -89,13 +86,22 @@ module ReorderBuffer_pipeline #(
     input wire [DEPTH-1:0] current_status_wb_enable,   //WB status updates enable
 
     output riscv_pipeline_signals_t entries_o [DEPTH-1:0],
+    output stage_t [DEPTH-1:0] current_status,
+    output stage_t [DEPTH-1:0] status,
+    output logic [DEPTH-1:0] is_at_exe_fast, 
 
 
 
     // Status signals
     output wire is_ready,
     output wire is_pipeline_stall,
-    output logic [ROB_ADDR_WIDTH-1:0] head
+    output logic [ROB_ADDR_WIDTH-1:0] head,
+
+    input wire branch_prediction_en,
+    input wire [PC_WIDTH-1:0] branch_prediction_pc,
+    input wire [PC_WIDTH-1:0] branch_prediction_bias,
+    input wire branch_prediction_taken,
+    input wire clear_btb
 );
     import signals::*;
     assign head = next_head;
@@ -116,28 +122,25 @@ module ReorderBuffer_pipeline #(
 
 
     localparam NUM_ARRAYS = 8;
-
-    stage_t [DEPTH-1:0] current_status;
-    stage_t [DEPTH-1:0] status;
     logic [NUM_ARRAYS-1:0][DEPTH-1:0] masks;
     stage_t [NUM_ARRAYS-1:0][DEPTH-1:0] arrays;
 
     assign masks[0] = is_pipeline_stall ? if_clear_mask | id_clear_mask | exe_clear_mask | mem_clear_mask : '{DEPTH{1'b0}};
-    assign masks[1] = current_status_if_enable;
-    assign masks[2] = current_status_id_enable;
-    assign masks[3] = current_status_of_enable;
-    assign masks[4] = current_status_exe_enable;
-    assign masks[5] = current_status_mem_enable;
-    assign masks[6] = current_status_wb_enable;
+    assign masks[6] = current_status_if_enable;
+    assign masks[5] = current_status_id_enable;
+    assign masks[4] = current_status_of_enable;
+    assign masks[3] = current_status_exe_enable;
+    assign masks[2] = current_status_mem_enable;
+    assign masks[1] = current_status_wb_enable;
     assign masks[NUM_ARRAYS-1] = '{DEPTH{1'b1}};
 
     assign arrays[0] = '{DEPTH{IF}};
-    assign arrays[1] = current_status_if;
-    assign arrays[2] = current_status_id;
-    assign arrays[3] = current_status_of;
-    assign arrays[4] = current_status_exe;
-    assign arrays[5] = current_status_mem;
-    assign arrays[6] = current_status_wb;
+    assign arrays[6] = current_status_if;
+    assign arrays[5] = current_status_id;
+    assign arrays[4] = current_status_of;
+    assign arrays[3] = current_status_exe;
+    assign arrays[2] = current_status_mem;
+    assign arrays[1] = current_status_wb;
     assign arrays[NUM_ARRAYS-1] = status;
 
 
@@ -186,10 +189,6 @@ module ReorderBuffer_pipeline #(
     logic [DEPTH-1:0] is_at_wb;
 
 
-    logic [DEPTH-1:0][REG_ADDR_LEN-1:0] read1_conflict_control;
-    logic [DEPTH-1:0][REG_ADDR_LEN-1:0] read2_conflict_control;
-    logic [DEPTH-1:0][REG_ADDR_LEN-1:0] write1_conflict_control;
-
     generate
         for (genvar i3 = 0; i3 < DEPTH; i3++) begin : combine_signals2
             assign is_at_if[i3]=(current_status[i3] == IF);
@@ -198,33 +197,13 @@ module ReorderBuffer_pipeline #(
             assign is_at_exe[i3]=(current_status[i3] == EXE);
             assign is_at_mem[i3]=(current_status[i3] == MEM);
             assign is_at_wb[i3]=(current_status[i3] == WB);
-            assign read1_conflict_control[i3]=entries_o[i3].id_signals.rr_a;
-            assign read2_conflict_control[i3]=entries_o[i3].id_signals.rr_b;
-            assign write1_conflict_control[i3]=entries_o[i3].id_signals.rr_dst;
+
+            assign is_at_exe_fast[i3]=current_status_exe_enable[i3] ? (current_status_exe[i3] == EXE) : (status[i3] == EXE);
         end
     endgenerate
 
-    conflict_control_pipeline #(
-        .DEPTH(DEPTH),
-        .WIDTH(NUM_REGS),
-        .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
-        .REG_ADDR_LEN(REG_ADDR_LEN),
-        .NUM_OUTPUT_WB(WB_PORT),
-        .NUM_OUTPUT_OF(OF_PORT)
-    ) conflict_control_inst (
-        .head(head),
-        .read1(read1_conflict_control),
-        .read2(read2_conflict_control),
-        .write1(write1_conflict_control),
-        .entrymask_write(is_at_wb),
-        .entrymask_read(is_at_of),
-        .output_wbenable(wb_enable),
-        .output_ofenable(of_enable),    
-        .output_ports_wb(wb_ports_available),
-        .output_ports_of(of_ports_available)
-    );
 
-    port_select_first_n_pipeline #(
+    port_select_pipeline #(
         .DEPTH(DEPTH),
         .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
         .NUM_OUTPUT(IF_PORT)
@@ -246,33 +225,46 @@ module ReorderBuffer_pipeline #(
         .output_ports(id_ports_available)
     );
 
-    port_select_pipeline #(
+    // port_select_pipeline #(
+    //     .DEPTH(DEPTH),
+    //     .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
+    //     .NUM_OUTPUT(EXE_PORT)
+    // ) port_select_exe (
+    //     .head(head),
+    //     .enable(is_at_exe),
+    //     .output_enable(exe_enable),
+    //     .output_ports(exe_ports_available)
+    // );
+
+    port_select_first_n_pipeline_with_ignore_mask #(
         .DEPTH(DEPTH),
         .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
-        .NUM_OUTPUT(IF_PORT)
-    ) port_select_exe (
+        .NUM_OUTPUT(MEM_PORT)
+    ) port_select_mem (
         .head(head),
-        .enable(is_at_exe),
-        .output_enable(exe_enable),
-        .output_ports(exe_ports_available)
+        .enable(is_at_mem),
+        .ignore(is_at_wb),
+        .output_enable(mem_enable),
+        .output_ports(mem_ports_available)
     );
 
     port_select_first_n_pipeline #(
         .DEPTH(DEPTH),
         .ROB_ADDR_LEN(ROB_ADDR_WIDTH),
-        .NUM_OUTPUT(IF_PORT)
-    ) port_select_mem (
+        .NUM_OUTPUT(WB_PORT)
+    ) port_select_wb (
         .head(head),
-        .enable(is_at_mem),
-        .output_enable(mem_enable),
-        .output_ports(mem_ports_available)
+        .enable(is_at_wb),
+        .output_enable(wb_enable),
+        .output_ports(wb_ports_available)
     );
 
 
     logic [DEPTH-1:0] new_if_mask;
-    logic [DEPTH-1:0] new_head_pc_gen;
+    logic [ROB_ADDR_WIDTH-1:0] new_head_pc_gen;
     always_comb begin
         new_if_mask = 'b0;
+        new_head_pc_gen = head;
         for (int j = 0; j < WB_PORT; j = j + 1) begin
             if (wb_enable[j]) begin
                 new_if_mask[wb_ports_available[j]] = 1'b1;
@@ -314,7 +306,13 @@ module ReorderBuffer_pipeline #(
 
         .mem_clear_signal(mem_clear_signal),
         .mem_set_pt(mem_set_pt),
-        .mem_next_pc(mem_next_pc)
+        .mem_next_pc(mem_next_pc),
+
+        .branch_prediction_en(branch_prediction_en),
+        .branch_prediction_pc(branch_prediction_pc),
+        .branch_prediction_bias(branch_prediction_bias),
+        .branch_prediction_taken(branch_prediction_taken),
+        .clear_btb(clear_btb)
     );
 
     always_ff @(posedge clk) begin
@@ -324,6 +322,12 @@ module ReorderBuffer_pipeline #(
             end
         end else begin
             status <= current_status;
+
+            // for (int i=0; i<DEPTH;i++) begin
+            //     if (entries_o[i].if_signals.PC == 32'h80000074) begin
+            //         $display("inst at %d", i, current_status[i]);
+            //     end
+            // end
         end
 
     end

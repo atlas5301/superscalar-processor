@@ -67,6 +67,8 @@ always @(posedge clk) begin
     end else begin
         case (state)
             IDLE: begin
+                finished_IF <= 1'b0;
+                finished_MEM <= 1'b0;
                 if (enable_MEM) begin
                     wb_adr_o <= address_MEM;
                     wb_sel_o <= sel_MEM;
@@ -102,12 +104,14 @@ always @(posedge clk) begin
                 end
             end
             READ_WAIT_IF: begin
+                // $display("done?? %h %h", wb_adr_o,  wb_dat_i);
                 if (wb_ack_i) begin
                     read_data_IF <= wb_dat_i;
                     wb_cyc_o <= 1'b0;
                     wb_stb_o <= 1'b0;
                     finished_IF <= 1'b1;
                     state <= DONE;
+                    // $display("done %h %h", wb_adr_o,  wb_dat_i);
                 end
             end
             WRITE_WAIT_IF: begin
