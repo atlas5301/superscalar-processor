@@ -364,7 +364,7 @@ module rename_register_mapping_table #(
                         logical_addr = entries_o[tmp_idx].id_signals.rr_dst;
                         physical_addr = entries_o[tmp_idx].id_signals.dst_rf_tag;
 
-                        reg_in_use_input[latest_table_out[logical_addr]] = 1'b0;
+                        //reg_in_use_input[latest_table_out[logical_addr]] = 1'b0;
                         latest_table_out[logical_addr] = physical_addr;
                         reg_in_use_input[physical_addr] = 1'b1;
                     end
