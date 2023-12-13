@@ -13,6 +13,8 @@ module rename_register_mapping_table #(
     parameter int ROB_ADDR_WIDTH = 6,
     parameter int OF_PORT = 4,
     parameter int EXE_PORT = 4,
+    parameter int IF_PORT = 4,
+    parameter int ID_PORT = 4,
     parameter int REG_ASSIGN_SET_SIZE = 16,
     parameter int REG_ASSIGN_SET_NUM = 3   
 ) (
@@ -266,11 +268,15 @@ module rename_register_mapping_table #(
             exe_is_ready_b[i] = 0;
         end
 
-        for (int i = 0; i < DEPTH; i++) begin
+        for (int i = 0; i < DEPTH - ID_PORT - IF_PORT; i++) begin
             int new_index = (i + head) % DEPTH; // Calculate new index
             if (exe_available[new_index]) begin
                 if (current_exe_output_port == EXE_PORT)
                     break;
+
+                if (current_exe_output_port != 0 && tmp_exe_is_branch[new_index]) begin
+                    continue;
+                end
 
                 exe_enable[current_exe_output_port] = 1;
                 exe_ports_available[current_exe_output_port] = new_index;
@@ -283,10 +289,10 @@ module rename_register_mapping_table #(
                 current_exe_output_port += 1;
             end
         end
-        if (exe_is_branch) begin
-            exe_enable = 'b0;
-            exe_enable[0] = 1'b1;
-        end
+        // if (exe_is_branch) begin
+        //     exe_enable = 'b0;
+        //     exe_enable[0] = 1'b1;
+        // end
     end
 
 

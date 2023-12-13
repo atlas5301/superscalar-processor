@@ -212,7 +212,11 @@ module id_module_pipeline #(
             7'b1101111: begin //jal
                 decoded.alu_op = NEXT_PC;
                 decoded.branch_op = JAL;
-                decoded.is_branch = 1;
+                if (imm == 4) begin
+                    decoded.is_branch = 0;
+                end else begin
+                    decoded.is_branch = 1;
+                end
                 decoded.rr_dst = rd;
             end
             7'b1100111: begin //jalr
