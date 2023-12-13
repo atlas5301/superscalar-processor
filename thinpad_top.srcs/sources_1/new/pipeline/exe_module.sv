@@ -84,6 +84,9 @@ module exe_module_pipeline #(
         return exe_clear_mask;
     endfunction
 
+
+    privilege_mode_t privilege_mode; 
+
     logic [DEPTH-1:0] mask_exe;
     logic [EXE_PORT-1:0] enable_addr_exe;
     logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_exe;
@@ -96,7 +99,6 @@ module exe_module_pipeline #(
 
     logic is_branch;
     branch_t branch_op;
-    
     logic [PC_WIDTH-1:0] next_pc;
     logic branch_taken;
 
@@ -157,6 +159,21 @@ module exe_module_pipeline #(
 
     end
 
+    logic is_csr;
+    csr_t csr_op;
+    logic [CSR_ADDR_LEN: 0] csr_addr;
+
+    logic [REG_DATA_WIDTH-1:0] mstatus;  // 0X300, Machine status register.
+    logic [REG_DATA_WIDTH-1:0] mie;      // 0X304, Machine interrupt-enable register.
+    logic [REG_DATA_WIDTH-1:0] mtvec;    // 0X305, Machine trap-handler base address.
+    logic [REG_DATA_WIDTH-1:0] mscratch; // 0X340, Scratch register for machine trap handlers.
+    logic [REG_DATA_WIDTH-1:0] mepc;     // 0X341, Machine exception program counter.
+    logic [REG_DATA_WIDTH-1:0] mcause;   // 0X342, Machine trap cause.
+    logic [REG_DATA_WIDTH-1:0] mip;      // 0X344, Machine interrupt pending.
+
+    logic [REG_DATA_WIDTH-1:0] new_csr_reg;
+
+    logic [REG_DATA_WIDTH-1:0] trap_pc;
 
     always_ff @(posedge clk) begin
         i_cache_reset <= 1'b0;
@@ -189,6 +206,14 @@ module exe_module_pipeline #(
             current_status_exe <= '{DEPTH{IF}};
             unpredicted_jump <= 'b0;
             unpredicted_jump_release <= 1'b0;
+            
+            mstatus <= 32'b0;
+            mie <= 32'b0;
+            mtvec <= 32'b0;
+            mscratch <= 32'b0;
+            mepc <= 32'b0;
+            mcause <= 32'b0;
+            mip <= 32'b0;
 
             wr_en_exe <= 'b0;
             exe_wr_enable <= 'b0;
@@ -235,7 +260,6 @@ module exe_module_pipeline #(
                         unpredicted_jump_release <= 1'b0;
                     end
                 end else begin
-
 
                     unpredicted_jump_release <= 1'b1;
                     addr_exe = exe_ports_available;
@@ -308,6 +332,77 @@ module exe_module_pipeline #(
                                 default: result = 0;  // Default case for unrecognized opcodes
                             endcase
 
+                            is_csr = entries_o[addr_exe[i]].id_signals.is_csr;
+                            csr_op = entries_o[addr_exe[i]].id_signals.csr_op;
+                            csr_addr = entries_o[addr_exe[i]].id_signals.csr_addr;
+
+                            if (is_csr) begin 
+                                case(csr_addr)
+                                    12'h300: b = mstatus;
+                                    12'h304: b = mie;
+                                    12'h305: b = mtvec;
+                                    12'h340: b = mscratch;
+                                    12'h341: b = mepc;
+                                    12'h344: b = mip;
+                                    default: b = 0;
+                                endcase
+
+                                case(csr_op)
+                                    NO_CSR: begin
+                                    end
+                                    CSRRC: begin
+                                        a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
+                                        new_csr_reg = b & (~a);
+                                        result = b;
+                                    end
+                                    CSRRS: begin
+                                        a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
+                                        new_csr_reg = b | a;
+                                        result = b;
+                                    end
+                                    CSRRW: begin
+                                        a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
+                                        new_csr_reg = a;
+                                        result = b;
+                                    end
+                                    EBREAK: begin
+                                        mcause <= 32'd3; // supervisor-rv/kernel/include/exception.h:11
+                                        mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
+                                        trap_pc = {mtvec[31: 2], 2'b0};
+                                        privilege_mode <= mode_m;
+                                        mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
+                                    end
+                                    ECALL: begin
+                                        case(privilege_mode)// supervisor-rv/kernel/include/exception.h:16-11
+                                            mode_u: mcause <= 32'd8;
+                                            mode_s: mcause <= 32'd9;
+                                            mode_m: mcause <= 32'd11;
+                                            default:;
+                                        endcase
+                                        mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
+                                        trap_pc = {mtvec[31: 2], 2'b0};
+                                        privilege_mode <= mode_m;
+                                        mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
+                                    end
+                                    MRET: begin 
+                                        trap_pc = mepc;
+                                        privilege_mode <= privilege_mode_t'(mstatus[12:11]);
+                                        mstatus <= {mstatus[31: 13], 2'b0, mstatus[10: 0]};
+                                    end
+                                endcase
+
+                                case(csr_addr)
+                                    12'h300: mstatus <= new_csr_reg;
+                                    12'h304: mie <= new_csr_reg;
+                                    12'h305: mtvec <= new_csr_reg;
+                                    12'h340: mscratch <= new_csr_reg;
+                                    12'h341: mepc <= new_csr_reg;
+                                    12'h344: mip <= new_csr_reg;
+                                    default: ;
+                                endcase
+                            end
+
+
                             exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;   // here, the result should be final, otherwise may cause problems
                             exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
                             wr_addr_exe[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
@@ -334,9 +429,6 @@ module exe_module_pipeline #(
                                     BEQ: begin
                                         if (a == b) begin
                                             branch_taken = 1'b1;
-                                            // next_pc = next_pc + entries_o[addr_exe[i]].id_signals.immediate;                                   
-                                        end else begin
-                                            // next_pc = next_pc + 4;
                                         end
                                     end
                                     BNE: begin

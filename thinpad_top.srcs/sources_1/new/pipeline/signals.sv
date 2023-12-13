@@ -5,6 +5,17 @@ package signals;
     typedef enum logic [3:0] {IF, IF2, ID, OF, OF2, EXE, MEM, WB} stage_t;
 
     typedef enum logic [3:0] {BEQ, BNE, BGE, BGEU, BLT, BLTU, JAL, JALR, FENCE} branch_t;
+
+    // Constants for cst_op
+
+    typedef enum logic [2:0] {NO_CSR, CSRRC, CSRRS, CSRRW, ECALL, EBREAK, MRET} csr_t;
+
+    typedef enum logic [1:0] {
+        mode_u = 2'b00,
+        mode_s = 2'b01,
+        mode_m = 2'b11
+    } privilege_mode_t;
+
     // IF Stage
     typedef struct {
         logic [31:0] inst;
@@ -26,6 +37,10 @@ package signals;
         logic is_pc_op;  // Flag for potential PC modification
         logic is_branch; // Flag to indicate if the instruction is a branch
         branch_t branch_op;
+
+        logic is_csr;             // if this is CSR operation
+        csr_t csr_op;             // CSR operation type
+        logic [11:0] csr_addr;     // the reg instr work with
 
         // Additional signals for OOOE and superscalar support
         logic [4:0]  rr_a;          // Renamed register a

@@ -1,6 +1,5 @@
 import signals::*;
 // `include "./pipeline/signals.sv"
-// import signals::*;
 
 module thinpad_top (
     input wire clk_50M,     // 50MHz 时钟输入
@@ -169,6 +168,7 @@ module thinpad_top (
     localparam int ROB_ADDR_WIDTH = 4;
     localparam int NUM_REGS = 32;
     localparam int REG_ADDR_LEN = 5;
+    localparam int CSR_ADDR_LEN = 12;
     localparam int IF_PORT = 2;
     localparam int ID_PORT = 2;
     localparam int OF_PORT = 6;
@@ -754,7 +754,9 @@ exe_module_pipeline #(
     .REG_DATA_WIDTH(DATA_WIDTH),
     .EXE_WRITE_PORTS(EXE_WRITE_PORTS), 
     .PHYSICAL_REGISTERS_ADDR_LEN(PHYSICAL_REGISTERS_ADDR_LEN),
-    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS)      
+    .NUM_PHYSICAL_REGISTERS(NUM_PHYSICAL_REGISTERS),
+    .REG_DATA_WIDTH(DATA_WIDTH),
+    .CSR_ADDR_LEN(CSR_ADDR_LEN)   
 ) exe_module_pipeline_inst (
     .clk(global_clock),
     .reset(global_reset),

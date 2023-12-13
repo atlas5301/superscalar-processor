@@ -54,7 +54,12 @@ module id_module_pipeline #(
         logic [4:0] rs1 = inst[19:15];
         logic [4:0] rs2 = inst[24:20];
         logic [6:0] funct7 = inst[31:25];
+        logic [11:0] csr_addr = inst[31:20];
         logic [31:0] imm;
+        
+        decoded.is_csr = 0;
+        decoded.csr_addr = 0;
+        decoded.csr_op = NO_CSR;
 
         decoded.immediate = 0;
         decoded.alu_op = ADD;
@@ -241,11 +246,45 @@ module id_module_pipeline #(
                 endcase
 
             end
+            7'b0001111: begin
+                case(funct3)
+                    3'b001: begin
+                        decoded.is_pc_op = 1;
+                        decoded.is_branch = 1;  
+                    end
+                    default: begin
+
+                    end
+
+                endcase
+
+            end
+            7'b1110011: begin // SYSTEM
+                decoded.rr_dst = rd;
+                decoded.rr_a = rs1;
+                decoded.is_csr = 1;
+                case(inst[31: 7])
+                    25'bXXXXXXXXXXXXXXXXX011XXXXX: begin
+                        decoded.csr_addr = csr_addr;
+                        decoded.csr_op = CSRRC;
+                    end
+                    25'bXXXXXXXXXXXXXXXXX010XXXXX: begin
+                        decoded.csr_addr = csr_addr;
+                        decoded.csr_op = CSRRS;
+                    end
+                    25'bXXXXXXXXXXXXXXXXX001XXXXX: begin
+                        decoded.csr_addr = csr_addr;
+                        decoded.csr_op = CSRRW;
+                    end
+                    25'b0000000000000000000000000: decoded.csr_op = ECALL;
+                    25'b0000000000010000000000000: decoded.csr_op = EBREAK;
+                    25'b0011000000100000000000000: decoded.csr_op = MRET;
+                    default: decoded.csr_op = NO_CSR;
+                endcase
+            end
             default: begin
             end
-
         endcase
-
         return decoded;
     endfunction
 
