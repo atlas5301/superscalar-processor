@@ -328,7 +328,25 @@ module mem_module_pipeline #(
 
         return byte_mask;
     endfunction
-
+    function logic [31:0] transform_data(
+        input logic [3:0]  sel_MEM,
+        input logic [31:0] original_data
+    );
+        logic [31:0] operand;
+        operand = 0;
+        // Signed extension based on the selected bytes using the mask
+        case (sel_MEM)
+            4'b0001: operand |= original_data[7:0];
+            4'b0010: operand |= original_data[7:0] << 8;
+            4'b0011: operand |= original_data[15:0];
+            4'b0100: operand |= original_data[7:0] << 16;
+            4'b1000: operand |= original_data[7:0] << 24;
+            4'b1100: operand |= original_data[15:0] << 16;
+            4'b1111: operand = original_data;
+            default: operand = 32'h0;
+        endcase
+        return operand;
+    endfunction
 
     function logic [31:0] extend_to_32bit(
         input logic        signed_input,
@@ -448,18 +466,12 @@ module mem_module_pipeline #(
                         enable_MEM <= 1'b1;
                         write_MEM <= entries_o[addresses[0]].id_signals.mem_write;
                         address_MEM <= entries_o[addresses[0]].exe_signals.rf_wdata_exe;
-                        write_data_MEM <= entries_o[addresses[0]].exe_signals.final_rf_rdata_b;
                         sel_MEM = generate_byte_mask(entries_o[addresses[0]].exe_signals.rf_wdata_exe, entries_o[addresses[0]].id_signals.mem_len);
+                        write_data_MEM <= transform_data(sel_MEM, entries_o[addresses[0]].exe_signals.final_rf_rdata_b);
                         sel_MEM_DEBUG = sel_MEM;
                         state_MEM <= WORKING;
+                        mem_entries_i[addresses[0]].rf_wdata_mem <= entries_o[addresses[0]].exe_signals.rf_wdata_exe;
                         result = entries_o[addresses[0]].exe_signals.rf_wdata_exe;
-                        // if (entries_o[addresses[0]].id_signals.mem_write) begin
-                        //     $display("MEM: %h %h %h %b", 
-                        //     entries_o[addresses[0]].if_signals.PC,
-                        //     entries_o[addresses[0]].exe_signals.rf_wdata_exe, 
-                        //     entries_o[addresses[0]].of_signals.rf_rdata_b, 
-                        //     sel_MEM);
-                        // end
                     end
                 end
             end

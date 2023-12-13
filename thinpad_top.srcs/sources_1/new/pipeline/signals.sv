@@ -1,11 +1,10 @@
 package signals;
     // Constants for alu_op
-    typedef enum logic [3:0] {ADD=4'b0000, SUB=4'b0001, AND=4'b0010, OR=4'b0011, NOT=4'b0100, XOR=4'b0101} alu_ops;
+    typedef enum logic [3:0] {ADD, SUB, AND, OR, NOT, XOR, SLL, SRL, SRA, SLT, SLTU, CLZ, PCNT, MIN, AUIPC, NEXT_PC} alu_ops;
 
     typedef enum logic [3:0] {IF, IF2, ID, OF, OF2, EXE, MEM, WB} stage_t;
 
-    typedef enum logic [2:0] {BEQ, BNE, BGE, BGEU, BLT, BLTU} branch_t;
-
+    typedef enum logic [2:0] {BEQ, BNE, BGE, BGEU, BLT, BLTU, JAL, JALR} branch_t;
     // IF Stage
     typedef struct {
         logic [31:0] inst;

@@ -79,8 +79,17 @@ module id_module_pipeline #(
             7'b0110011: imm = 'b0; // ADD
             7'b0010011: imm = {{20{inst[31]}}, inst[31:20]};  // ADDI, ANDI
             7'b1100011: imm = {{20{inst[31]}}, inst[7], inst[30:25], inst[11:8], 1'b0}; // BEQ
-            7'b0000011: imm = {{20{inst[31]}}, inst[31:20]};   // LB
+            7'b0000011: begin
+                if (funct3 == 3'b100 || funct3 == 3'b101) begin
+                    imm = {20'b0, inst[31:20]};   // LBU,LHU
+                end else begin
+                    imm = {{20{inst[31]}}, inst[31:20]};   // LB
+                end
+            end
             7'b0100011: imm = {{20{inst[31]}}, inst[31:25], inst[11:7]};       // SB, SW
+            7'b1101111: imm = {{20{inst[31]}}, inst[31], inst[19:12], inst[20], inst[30:21], 1'b0}; //jal
+            7'b1100111: imm = {{20{inst[31]}}, inst[31:20]}; //jalr
+            7'b0010111: imm = {inst[31:12], 12'b0};//luipc
             default: imm = 32'b0;
         endcase
 
@@ -90,64 +99,131 @@ module id_module_pipeline #(
         case (opcode)
             7'b0110111: begin// LUI
                 decoded.rr_dst = rd;
-                decoded.rr_a = 0;
             end
-
-            7'b0010011: begin // ADDI, ANDI
+            7'b0010111: begin//AUIPC
+                decoded.alu_op = AUIPC;
+                decoded.rr_dst = rd;
+                // $display("AUIPC %h %h",imm,inst);
+            end
+            7'b0010011: begin // ADDI, ANDI, XORI, ORI
                 case(funct3)
-                    3'b000: begin
-                        decoded.alu_op = ADD;
+                    3'b000: decoded.alu_op = ADD;
+                    3'b001: begin
+                        case(funct7) 
+                            7'b0000000: decoded.alu_op = SLL;
+                            7'b0110000: begin
+                                case(rs2) 
+                                    5'b00000: decoded.alu_op = CLZ;
+                                    5'b00010: decoded.alu_op = PCNT;
+                                endcase
+                            end
+                        endcase
                     end
-                    3'b111: begin
-                        decoded.alu_op = AND;
+                    3'b010: decoded.alu_op = SLT;
+                    3'b011: decoded.alu_op = SLTU;
+                    3'b100: decoded.alu_op = XOR;
+                    3'b101: begin
+                        case(funct7)
+                            7'b0000000: decoded.alu_op = SRL;
+                            7'b0100000: decoded.alu_op = SRA;
+                            default: decoded.alu_op = SRL;
+                        endcase
                     end
-                    default: begin
-                        decoded.alu_op = ADD;
-                    end
+                    3'b110: decoded.alu_op = OR;
+                    3'b111: decoded.alu_op = AND;
+                    default: decoded.alu_op = ADD;
                 endcase
                 decoded.rr_a = rs1;
                 decoded.rr_dst = rd;
             end
-            7'b1100011: begin // BEQ
+            7'b1100011: begin // BEQ, BNE, BGE, BGEU, BLT, BLTU
+                case(funct3)
+                    3'b000: decoded.branch_op = BEQ;
+                    3'b001: decoded.branch_op = BNE;
+                    3'b101: decoded.branch_op = BGE;
+                    3'b111: decoded.branch_op = BGEU;
+                    3'b100: decoded.branch_op = BLT;
+                    3'b110: decoded.branch_op = BLTU;
+                    default: decoded.branch_op = BEQ;
+                endcase
                 decoded.is_branch = 1;
-                decoded.is_pc_op = 0;
                 decoded.rr_a = rs1;
                 decoded.rr_b = rs2;
                 decoded.use_rs2 = 1;
             end
-            7'b0000011: begin // LB
+            7'b0000011: begin // LB, LH, LW, LBU, LHU
+                case(funct3)
+                    3'b000: decoded.mem_len = 1;
+                    3'b001: decoded.mem_len = 2;
+                    3'b010: decoded.mem_len = 4;
+                    3'b100: decoded.mem_len = 1;
+                    3'b101: decoded.mem_len = 2;
+                endcase
+                case(funct3)
+                    3'b100: decoded.mem_is_signed = 0;
+                    3'b101: decoded.mem_is_signed = 0;
+                    default: decoded.mem_is_signed = 1;
+                endcase
                 decoded.mem_en = 1;
                 decoded.rr_a = rs1;
                 decoded.rr_dst = rd;
-                decoded.mem_is_signed = 1;
-                decoded.mem_len = 1;
             end
-            7'b0100011: begin // SB, SW
+            7'b0100011: begin // SB, SH, SW
                 case(funct3)
-                    3'b000: begin
-                        decoded.mem_len = 1;
-                    end
-                    3'b010: begin
-                        decoded.mem_len = 4;
-                    end
-                    default: begin
-                        decoded.mem_len = 1;
-                    end
+                    3'b000: decoded.mem_len = 1;
+                    3'b001: decoded.mem_len = 2;
+                    3'b010: decoded.mem_len = 4;
                 endcase
+                decoded.mem_is_signed = 1;
                 decoded.mem_en = 1;
                 decoded.mem_write = 1;
                 decoded.rr_a = rs1;
                 decoded.rr_b = rs2;
             end
-            7'b0110011: begin // ADD
-                decoded.alu_op = ADD;
+            7'b0110011: begin // ADD, SUB, XOR, OR, XOR, SLL, SRA, SRL, SLTU
+                case(funct7) 
+                    7'b0000000: begin
+                        case(funct3)
+                            3'b000: decoded.alu_op = ADD;
+                            3'b001: decoded.alu_op = SLL;
+                            3'b010: decoded.alu_op = SLT;
+                            3'b011: decoded.alu_op = SLTU;
+                            3'b100: decoded.alu_op = XOR;
+                            3'b101: decoded.alu_op = SRL;
+                            3'b110: decoded.alu_op = OR;
+                            3'b111: decoded.alu_op = AND;
+                            default: decoded.alu_op = ADD;
+                        endcase
+                    end
+                    7'b0100000: begin
+                        case(funct3)
+                            3'b000: decoded.alu_op = SUB;
+                            3'b101: decoded.alu_op = SRA;
+                            default: decoded.alu_op = SUB;
+                        endcase
+                    end
+                    7'b0000101: decoded.alu_op = MIN;
+                endcase
                 decoded.rr_a = rs1;
                 decoded.rr_b = rs2;
                 decoded.rr_dst = rd;
                 decoded.use_rs2 = 1;
             end
+            7'b1101111: begin //jal
+                decoded.alu_op = NEXT_PC;
+                decoded.branch_op = JAL;
+                decoded.is_branch = 1;
+                decoded.rr_dst = rd;
+            end
+            7'b1100111: begin //jalr
+                decoded.alu_op = NEXT_PC;
+                decoded.branch_op = JALR;
+                decoded.is_branch = 1;
+                decoded.is_pc_op = 1;
+                decoded.rr_a = rs1;
+                decoded.rr_dst = rd;
+            end
             default: begin
-
             end
 
         endcase

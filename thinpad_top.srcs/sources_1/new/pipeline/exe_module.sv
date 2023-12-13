@@ -9,7 +9,8 @@ module exe_module_pipeline #(
     parameter int EXE_WRITE_PORTS = 4, 
     parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
     parameter int NUM_PHYSICAL_REGISTERS = 64,
-    parameter int CACHE_CYCLES = 3
+    parameter int CACHE_CYCLES = 3,
+    parameter int SHIFT_WIDTH=5
 ) (
     input wire clk,
     input wire reset,
@@ -275,8 +276,33 @@ module exe_module_pipeline #(
                                 SUB: result = a - b;
                                 AND: result = a & b;
                                 OR:  result = a | b;
-                                NOT: result = ~a;
                                 XOR: result = a ^ b;
+                                NOT: result = ~a;
+                                SLL: result = a << b[SHIFT_WIDTH-1:0];
+                                SRL: result = a >> b[SHIFT_WIDTH-1:0];  // logical right shift
+                                SRA: result = signed'(a) >>> b[SHIFT_WIDTH-1:0];   // arithmetic right shift
+                                SLT: result = $signed(a) < $signed(b);
+                                SLTU: result = a < b;
+                                CLZ: begin
+                                    result = REG_DATA_WIDTH;
+                                    for(int i = 0; i < REG_DATA_WIDTH; i++) 
+                                        if((a << i) >> (REG_DATA_WIDTH - 1)) begin
+                                            result = i;
+                                            break;
+                                        end
+                                end
+                                MIN: result = ($signed(a) < $signed(b))? a:b;
+                                PCNT: begin
+                                    result = 0;
+                                    for (int i = 0; i < REG_DATA_WIDTH; i++)
+                                        result += (a >> i) & 1;
+                                end         
+                                AUIPC: begin
+                                    result = entries_o[addr_exe[i]].if_signals.PC + b;
+                                end                    
+                                NEXT_PC: begin
+                                    result = entries_o[addr_exe[i]].if_signals.PC + 4;
+                                end
                                 default: result = 0;  // Default case for unrecognized opcodes
                             endcase
 
@@ -291,6 +317,7 @@ module exe_module_pipeline #(
                                 exe_wr_enable[i] <= 1'b1;
                                 wr_en_exe_cache[0][i] <= 1'b1;
                             end
+                            $display("exe_module: %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // if ((entries_o[addr_exe[i]].if_signals.PC == 32'h80000074)) begin
                             //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // end
@@ -309,6 +336,27 @@ module exe_module_pipeline #(
                                             // next_pc = next_pc + 4;
                                         end
                                     end
+                                    BNE: begin
+                                        if (a != b) branch_taken = 1'b1;
+                                    end
+                                    BGE: begin
+                                        if ($signed(a) >= $signed(b)) branch_taken = 1'b1;
+                                    end
+                                    BGEU: begin
+                                        if (a >= b) branch_taken = 1'b1;
+                                    end
+                                    BLT: begin
+                                        if ($signed(a) < $signed(b)) branch_taken = 1'b1;
+                                    end
+                                    BLTU: begin
+                                        if (a < b) branch_taken = 1'b1;
+                                    end
+                                    JAL: begin
+                                        branch_taken = 1'b1;
+                                    end
+                                    JALR: begin
+                                        branch_taken = 1'b1;
+                                    end
                                     default: begin
                                         //next_pc = entries_o[addr_exe[i]].if_signals.PC+4;
                                     end
@@ -322,8 +370,16 @@ module exe_module_pipeline #(
                                 branch_prediction_bias <= entries_o[addr_exe[0]].id_signals.immediate;
                                 branch_prediction_taken <= branch_taken;
 
-                                unpredicted_jump_pc_base <= entries_o[addr_exe[0]].if_signals.PC;
-                                unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[0]].id_signals.immediate : 4;
+                                if(branch_op == JAL) begin
+                                    unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
+                                    unpredicted_jump_pc_additional = entries_o[addr_exe[i]].id_signals.immediate;
+                                end else if(branch_op == JALR) begin
+                                    unpredicted_jump_pc_base = a;
+                                    unpredicted_jump_pc_additional = entries_o[addr_exe[i]].id_signals.immediate;
+                                end else begin
+                                    unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
+                                    unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
+                                end
 
 
                                 if (entries_o[addr_exe[i]].id_signals.is_pc_op | branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
