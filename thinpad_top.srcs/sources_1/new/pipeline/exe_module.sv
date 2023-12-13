@@ -60,6 +60,7 @@ module exe_module_pipeline #(
     logic [DEPTH-1:0] mask_exe;
     logic [EXE_PORT-1:0] enable_addr_exe;
     logic [EXE_PORT-1:0][ROB_ADDR_WIDTH-1:0] addr_exe;
+    logic branch_flag;
     logic unpredicted_jump;
     logic [ROB_ADDR_WIDTH-1:0] unpredicted_jump_entry_addr;
     logic [ROB_ADDR_WIDTH-1:0] unpredicted_jump_entry_head;
@@ -75,8 +76,6 @@ module exe_module_pipeline #(
     logic [REG_DATA_WIDTH-1:0] a,b,result;
     logic [31:0] debug_PC;
 
-    logic unpredicted_jump_release;
-
     // assign current_status_exe_enable = mask_exe;
 
     always_comb begin
@@ -86,26 +85,25 @@ module exe_module_pipeline #(
                 mask_exe[addr_exe[j]] = 1'b1;
             end
         end
-        if (unpredicted_jump_release && is_ready) begin
+        if (unpredicted_jump) begin
             mask_exe[unpredicted_jump_entry_addr] = 1'b1;
         end
-        current_status_exe_enable = mask_exe;
 
     end
 
 
     always_ff @(posedge clk) begin
-        // current_status_exe_enable <= mask_exe;
+        current_status_exe_enable <= mask_exe;
         if (reset) begin
             is_exe_ready <= 1'b0;
             enable_addr_exe <= 'b0;
             exe_clear_signal <= 1'b0;
             exe_clear_mask <= 'b0;
+            branch_flag <= 1'b0;
             exe_set_pt <= 'b0;
             exe_next_pc <= 'b0;
             current_status_exe <= '{DEPTH{IF}};
             unpredicted_jump <= 'b0;
-            unpredicted_jump_release <= 1'b0;
 
         end else begin
             if (unpredicted_jump) begin
@@ -113,100 +111,97 @@ module exe_module_pipeline #(
                 exe_set_pt <= unpredicted_jump_entry_addr;
                 next_pc = unpredicted_jump_pc_base + unpredicted_jump_pc_additional;
                 exe_next_pc <= next_pc;
-                exe_clear_mask <= generate_clear_mask(unpredicted_jump_entry_addr, head);
-                //$display("exe_clear_mask:", generate_clear_mask(unpredicted_jump_entry_addr, unpredicted_jump_entry_head));
-                // $display("jumped %h %h", unpredicted_jump_entry_addr, entries_o[unpredicted_jump_entry_addr].if_signals.PC);
+                exe_clear_mask <= generate_clear_mask(unpredicted_jump_entry_addr, unpredicted_jump_entry_head);
                 current_status_exe[unpredicted_jump_entry_addr] <= MEM;
+
                 unpredicted_jump <= 1'b0;
-                unpredicted_jump_release <= 1'b1;
+            end
+            if (is_pipeline_stall) begin
+                is_exe_ready <= 1'b1;
+                enable_addr_exe <= 'b0;
+                branch_flag = 1'b0;
+                if (is_ready) begin
+                    exe_clear_signal <= 1'b0;
+                    exe_clear_mask <= 'b0;
+                end
             end else begin
-                if (is_pipeline_stall) begin
-                    // $display("stall_exe");
-                    is_exe_ready <= 1'b1;
-                    enable_addr_exe <= 'b0;
-                    if (is_ready) begin
-                        exe_clear_signal <= 1'b0;
-                        exe_clear_mask <= 'b0;
-                        unpredicted_jump_release <= 1'b0;
-                    end
-                end else begin
+                addr_exe = exe_ports_available;
+                enable_addr_exe = exe_enable;
+                branch_flag = 1'b0;
+                is_exe_ready <= 1'b0;
 
-
-                    unpredicted_jump_release <= 1'b1;
-                    addr_exe = exe_ports_available;
-                    enable_addr_exe = exe_enable;
-                    is_exe_ready <= 1'b0;
-
-                    for (int i=0;i<EXE_PORT;i++) begin
-                        if (enable_addr_exe[i]) begin
-                            current_status_exe[addr_exe[i]] <= EXE;
-                        end
-                    end
-
-                    for (int i=0;i<EXE_PORT;i++) begin
-                        if (enable_addr_exe[i]) begin
-                            a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
-                            if (entries_o[addr_exe[i]].id_signals.use_rs2) begin
-                                b = entries_o[addr_exe[i]].of_signals.rf_rdata_b;
-                            end else begin
-                                b = entries_o[addr_exe[i]].id_signals.immediate;
-                            end
-
-
-                            case (entries_o[addr_exe[i]].id_signals.alu_op)
-                                ADD: result = a + b;
-                                SUB: result = a - b;
-                                AND: result = a & b;
-                                OR:  result = a | b;
-                                NOT: result = ~a;
-                                XOR: result = a ^ b;
-                                default: result = 0;  // Default case for unrecognized opcodes
-                            endcase
-
-                            exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;
-                        // if ((entries_o[addr_exe[i]].if_signals.PC == 32'h80000074)) begin
-                            //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
-                        // end
-                            debug_PC <= entries_o[addr_exe[i]].if_signals.PC; 
-
-
-                            is_branch = entries_o[addr_exe[i]].id_signals.is_branch;
-                            branch_op = entries_o[addr_exe[i]].id_signals.branch_op;
-
-                            if (is_branch) begin
-                                // next_pc = entries_o[addr_exe[i]].if_signals.PC;
-                                branch_taken = 1'b0;
-                                case(branch_op)
-                                    BEQ: begin
-                                        if (a == b) begin
-                                            branch_taken = 1'b1;
-                                            // next_pc = next_pc + entries_o[addr_exe[i]].id_signals.immediate;                                   
-                                        end else begin
-                                            // next_pc = next_pc + 4;
-                                        end
-                                    end
-                                    default: begin
-                                        next_pc = entries_o[addr_exe[i]].if_signals.PC+4;
-                                    end
-                                endcase
-                                if (branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
-                                    unpredicted_jump <= 1'b1;
-                                    unpredicted_jump_entry_addr <= addr_exe[i];
-                                    unpredicted_jump_entry_head <= head;
-                                    unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
-                                    unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
-                                    //$display("unpredicted branch: %d %h %h %h", i, entries_o[addr_exe[i]].if_signals.PC,  entries_o[addr_exe[i]].if_signals.inst, unpredicted_jump_pc_additional);
-                                    break;
-                                end else begin
-                                    //$display("predicted branch: %d %h %h", i, entries_o[addr_exe[i]].if_signals.PC,  entries_o[addr_exe[i]].if_signals.inst);
-                                end
-                            end
-                            current_status_exe[addr_exe[i]] <= MEM;
-
-                                
-                        end
+                for (int i=0;i<EXE_PORT;i++) begin
+                    if (enable_addr_exe[i]) begin
+                        current_status_exe[addr_exe[i]] <= EXE;
                     end
                 end
+
+                for (int i=0;i<EXE_PORT;i++) begin
+                    if (branch_flag) begin
+                        break;
+                    end
+
+                    if (enable_addr_exe[i]) begin
+
+                        a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
+                        if (entries_o[addr_exe[i]].id_signals.use_rs2) begin
+                            b = entries_o[addr_exe[i]].of_signals.rf_rdata_b;
+                        end else begin
+                            b = entries_o[addr_exe[i]].id_signals.immediate;
+                        end
+
+
+                        case (entries_o[addr_exe[i]].id_signals.alu_op)
+                            ADD: result = a + b;
+                            SUB: result = a - b;
+                            AND: result = a & b;
+                            OR:  result = a | b;
+                            NOT: result = ~a;
+                            XOR: result = a ^ b;
+                            default: result = 0;  // Default case for unrecognized opcodes
+                        endcase
+
+                        exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;
+
+                        debug_PC <= entries_o[addr_exe[i]].if_signals.PC; 
+
+
+                        is_branch = entries_o[addr_exe[i]].id_signals.is_branch;
+                        branch_op = entries_o[addr_exe[i]].id_signals.branch_op;
+
+                        if (is_branch) begin
+                            // next_pc = entries_o[addr_exe[i]].if_signals.PC;
+                            branch_taken = 1'b0;
+                            case(branch_op)
+                                BEQ: begin
+                                    if (a == b) begin
+                                        branch_taken = 1'b1;
+                                        // next_pc = next_pc + entries_o[addr_exe[i]].id_signals.immediate;                                   
+                                    end else begin
+                                        // next_pc = next_pc + 4;
+                                    end
+                                end
+                                default: begin
+                                    next_pc = entries_o[addr_exe[i]].if_signals.PC+4;
+                                end
+                            endcase
+                            if (branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
+                                unpredicted_jump <= 1'b1;
+                                unpredicted_jump_entry_addr <= addr_exe[i];
+                                unpredicted_jump_entry_head <= head;
+                                unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
+                                unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
+                                break;
+                            end
+                        end
+
+                        current_status_exe[addr_exe[i]] <= MEM;
+                        
+
+                            
+                    end
+                end
+
             end
 
         end
