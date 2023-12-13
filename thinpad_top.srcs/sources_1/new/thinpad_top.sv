@@ -116,15 +116,15 @@ module thinpad_top (
 
   logic global_clock; 
 //   assign global_clock = clk_20M;
-  assign global_clock = clk_10M;
-//   assign global_clock = clk_30M;
+//   assign global_clock = clk_10M;
+  assign global_clock = clk_30M;
 //   assign global_clock = clk_35M;
 //   assign global_clock = clk_40M;
 //   assign global_clock = clk_50M;
   logic global_reset; 
   assign global_reset = reset_of_clk10M;
 //   assign global_reset = reset_btn;
-  localparam int CLK_FREQ = 10_000_000;
+  localparam int CLK_FREQ = 30_000_000;
 
   // 不使用内存、串口时，禁用其使能信号
 
