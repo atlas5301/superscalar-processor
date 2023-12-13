@@ -92,7 +92,7 @@ module pc_gen_pipeline #(
             BTB_query_output_enable[i] = BTB_query_enable[i];
             BTB_query_output_query_entry[i] = BTB_query_entry[i];
             BTB_query_output_next_pc[i] = BTB_query_PC[i] + 4;
-            BTB_query_output_pc[i] = BTB_query_PC;
+            BTB_query_output_pc[i] = BTB_query_PC[i];
             BTB_query_output_is_branch[i] = 1'b0;
 
             for (int j=0; j<BTB_SIZE; j++) begin
