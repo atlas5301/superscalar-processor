@@ -147,12 +147,11 @@ module id_module_pipeline #(
                 mask_id[addr_id[j]] = 1'b1;
             end
         end
-        current_status_id_enable = mask_id;
     end
 
 
     always_ff @(posedge clk) begin
-        // current_status_id_enable <= mask_id;
+        current_status_id_enable <= mask_id;
         if (reset) begin
             is_id_ready <= 1'b0;
             enable_addr_id <= 'b0;
@@ -164,7 +163,6 @@ module id_module_pipeline #(
 
         end else begin
             if (is_pipeline_stall) begin
-                // $display("stall_id");
                 is_id_ready <= 1'b1;
                 enable_addr_id <= 'b0;
                 if (is_ready) begin
@@ -179,7 +177,6 @@ module id_module_pipeline #(
                 for (int i=0;i<ID_PORT;i++) begin
                     if (enable_addr_id[i]) begin
                         id_entries_i[addr_id[i]] <= rv32i_decoder_func(entries_o[addr_id[i]].if_signals.inst);
-                        //$display("IDPC: %h",entries_o[addr_id[i]].if_signals.PC);
                         current_status_id[addr_id[i]] <= OF;
                     end
                 end
