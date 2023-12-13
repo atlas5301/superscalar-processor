@@ -55,6 +55,7 @@ module id_module_pipeline #(
         logic [4:0] rs2 = inst[24:20];
         logic [6:0] funct7 = inst[31:25];
         logic [11:0] csr_addr = inst[31:20];
+        logic [24:0] csr_funct3 = inst[14: 12];
         logic [31:0] imm;
         
         decoded.is_csr = 0;
@@ -101,6 +102,7 @@ module id_module_pipeline #(
 
         decoded.immediate = imm;
 
+        // $display("opcode: %d", opcode);
 
         case (opcode)
             7'b0110111: begin// LUI
@@ -263,24 +265,48 @@ module id_module_pipeline #(
                 decoded.rr_dst = rd;
                 decoded.rr_a = rs1;
                 decoded.is_csr = 1;
-                case(inst[31: 7])
-                    25'bXXXXXXXXXXXXXXXXX011XXXXX: begin
+                case(csr_funct3)
+                    3'b011: begin
+                        $display("csrrc");
                         decoded.csr_addr = csr_addr;
                         decoded.csr_op = CSRRC;
                     end
-                    25'bXXXXXXXXXXXXXXXXX010XXXXX: begin
+                    3'b010: begin
+                        $display("csrrs");
                         decoded.csr_addr = csr_addr;
                         decoded.csr_op = CSRRS;
                     end
-                    25'bXXXXXXXXXXXXXXXXX001XXXXX: begin
+                    3'b001: begin
+                        $display("csrrw");
                         decoded.csr_addr = csr_addr;
                         decoded.csr_op = CSRRW;
                     end
-                    25'b0000000000000000000000000: decoded.csr_op = ECALL;
-                    25'b0000000000010000000000000: decoded.csr_op = EBREAK;
-                    25'b0011000000100000000000000: decoded.csr_op = MRET;
+                    3'b000: begin
+                        case(csr_addr)
+                        12'b00000000000: begin
+                            $display("ecall");
+                            decoded.is_branch = 1;
+                            decoded.branch_op = TRAP;
+                            decoded.csr_op = ECALL;
+                        end
+                        12'b00000000001: begin
+                            $display("ebreak");
+                            decoded.is_branch = 1;
+                            decoded.branch_op = TRAP;
+                            decoded.csr_op = EBREAK;
+                        end
+                        12'b00110000001: begin
+                            $display("mret");
+                            decoded.is_branch = 1;
+                            decoded.branch_op = TRAP;
+                            decoded.csr_op = MRET;
+                        end
+                        default: decoded.csr_op = NO_CSR;
+                        endcase
+                    end
                     default: decoded.csr_op = NO_CSR;
                 endcase
+                $display("rr_dst: %d, rr_a: %d, is_csr: %d csr_addr: %h", rd, rs1, decoded.is_csr, csr_addr);
             end
             default: begin
             end

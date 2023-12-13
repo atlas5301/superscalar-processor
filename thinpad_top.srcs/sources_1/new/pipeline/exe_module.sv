@@ -6,6 +6,7 @@ module exe_module_pipeline #(
     parameter ROB_ADDR_WIDTH = 6,
     parameter EXE_PORT = 2,
     parameter REG_DATA_WIDTH = 32,
+    parameter CSR_ADDR_LEN = 5,
     parameter int EXE_WRITE_PORTS = 4, 
     parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
     parameter int NUM_PHYSICAL_REGISTERS = 64,
@@ -214,6 +215,8 @@ module exe_module_pipeline #(
             mepc <= 32'b0;
             mcause <= 32'b0;
             mip <= 32'b0;
+            new_csr_reg <= 32'b0;
+            trap_pc <= 0;
 
             wr_en_exe <= 'b0;
             exe_wr_enable <= 'b0;
@@ -351,17 +354,14 @@ module exe_module_pipeline #(
                                     NO_CSR: begin
                                     end
                                     CSRRC: begin
-                                        a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
                                         new_csr_reg = b & (~a);
                                         result = b;
                                     end
                                     CSRRS: begin
-                                        a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
                                         new_csr_reg = b | a;
                                         result = b;
                                     end
                                     CSRRW: begin
-                                        a = entries_o[addr_exe[i]].of_signals.rf_rdata_a;
                                         new_csr_reg = a;
                                         result = b;
                                     end
@@ -373,7 +373,7 @@ module exe_module_pipeline #(
                                         mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
                                     end
                                     ECALL: begin
-                                        case(privilege_mode)// supervisor-rv/kernel/include/exception.h:16-11
+                                        case(privilege_mode) // supervisor-rv/kernel/include/exception.h:16-11
                                             mode_u: mcause <= 32'd8;
                                             mode_s: mcause <= 32'd9;
                                             mode_m: mcause <= 32'd11;
@@ -401,7 +401,6 @@ module exe_module_pipeline #(
                                     default: ;
                                 endcase
                             end
-
 
                             exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;   // here, the result should be final, otherwise may cause problems
                             exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
@@ -456,6 +455,7 @@ module exe_module_pipeline #(
                                         branch_taken = 1'b0;
                                         i_cache_reset <= 1'b1;
                                     end
+                                    TRAP: branch_taken = 1'b1;
                                     default: begin
                                         //next_pc = entries_o[addr_exe[i]].if_signals.PC+4;
                                     end
@@ -472,13 +472,18 @@ module exe_module_pipeline #(
                                 if(branch_op == JALR) begin
                                     unpredicted_jump_pc_base = a;
                                     unpredicted_jump_pc_additional = entries_o[addr_exe[i]].id_signals.immediate;
+                                end else if(branch_op == TRAP) begin
+                                    unpredicted_jump_pc_base = trap_pc;
+                                    unpredicted_jump_pc_additional = 0;
                                 end else begin
                                     unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
                                     unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
                                 end
 
-
-                                if (entries_o[addr_exe[i]].id_signals.is_pc_op | branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken) begin
+                                if (entries_o[addr_exe[i]].id_signals.is_pc_op
+                                    | branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken
+                                    | branch_op == TRAP
+                                    ) begin
                                     unpredicted_jump <= 1'b1;
                                     // unpredicted_jump_entry_addr <= addr_exe[i];
                                     // unpredicted_jump_entry_head <= head;

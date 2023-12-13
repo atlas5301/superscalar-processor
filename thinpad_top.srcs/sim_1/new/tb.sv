@@ -46,8 +46,7 @@ module tb;
   wire uart_tsre;  // 数据发送完毕标志
 
   // Windows 需要注意路径分隔符的转义，例如 "D:\\foo\\bar.bin"
-  parameter BASE_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\kernel.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
-  // parameter BASE_RAM_INIT_FILE = "C:\\Users\\zeven\\Desktop\\cod\\rv-2023\\asmcode\\A.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
+  parameter BASE_RAM_INIT_FILE = "C:\\Users\\Fuyuki\\Documents\\Studying\\2023fall\\cod\\rv-2023\\supervisor-rv\\kernel\\kernel.bin"; // BaseRAM 初始化文件，请修改为实际的绝对路径
   parameter EXT_RAM_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\test.bin";  // ExtRAM 初始化文件，请修改为实际的绝对路径
   parameter FLASH_INIT_FILE = "C:\\Users\\atlas5301\\Downloads\\sum.elf";  // Flash 初始化文件，请修改为实际的绝对路径
 
@@ -175,6 +174,26 @@ module tb;
   assign a = dut.exe_module_pipeline_inst.a;
   assign b = dut.exe_module_pipeline_inst.b;
   assign result = dut.exe_module_pipeline_inst.result; 
+
+  logic [31:0] mstatus;  // 0X300, Machine status register.
+  logic [31:0] mie;      // 0X304, Machine interrupt-enable register.
+  logic [31:0] mtvec;    // 0X305, Machine trap-handler base address.
+  logic [31:0] mscratch; // 0X340, Scratch register for machine trap handlers.
+  logic [31:0] mepc;     // 0X341, Machine exception program counter.
+  logic [31:0] mcause;   // 0X342, Machine trap cause.
+  logic [31:0] mip;      // 0X344, Machine interrupt pending.
+  logic is_csr;
+  logic is_branch;
+
+  assign is_csr = dut.exe_module_pipeline_inst.is_csr;
+  assign is_branch = dut.exe_module_pipeline_inst.is_branch;
+  assign mstatus = dut.exe_module_pipeline_inst.mstatus;
+  assign mie = dut.exe_module_pipeline_inst.mie;
+  assign mtvec = dut.exe_module_pipeline_inst.mtvec;
+  assign mscratch = dut.exe_module_pipeline_inst.mscratch;
+  assign mepc = dut.exe_module_pipeline_inst.mepc;
+  assign mcause = dut.exe_module_pipeline_inst.mcause;
+  assign mip = dut.exe_module_pipeline_inst.mip;
 
   logic [0:0] test_if_enable;
   logic [0:0][3:0] test_if_ports_available;

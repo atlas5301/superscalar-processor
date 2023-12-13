@@ -4,7 +4,7 @@ package signals;
 
     typedef enum logic [3:0] {IF, IF2, ID, OF, OF2, EXE, MEM, WB} stage_t;
 
-    typedef enum logic [3:0] {BEQ, BNE, BGE, BGEU, BLT, BLTU, JAL, JALR, FENCE} branch_t;
+    typedef enum logic [3:0] {BEQ, BNE, BGE, BGEU, BLT, BLTU, JAL, JALR, TRAP, FENCE} branch_t;
 
     // Constants for cst_op
 
