@@ -4,7 +4,7 @@ package signals;
 
     typedef enum logic [3:0] {IF, IF2, ID, OF, OF2, EXE, MEM, WB} stage_t;
 
-    typedef enum logic [2:0] {BEQ, BNE, BGE, BGEU, BLT, BLTU, JAL, JALR} branch_t;
+    typedef enum logic [3:0] {BEQ, BNE, BGE, BGEU, BLT, BLTU, JAL, JALR, FENCE} branch_t;
     // IF Stage
     typedef struct {
         logic [31:0] inst;

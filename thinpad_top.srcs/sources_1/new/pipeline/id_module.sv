@@ -90,6 +90,7 @@ module id_module_pipeline #(
             7'b1101111: imm = {{20{inst[31]}}, inst[31], inst[19:12], inst[20], inst[30:21], 1'b0}; //jal
             7'b1100111: imm = {{20{inst[31]}}, inst[31:20]}; //jalr
             7'b0010111: imm = {inst[31:12], 12'b0};//luipc
+            7'b0001111: imm = {{20{inst[31]}}, inst[31:20]};  //fence.i
             default: imm = 32'b0;
         endcase
 
@@ -226,6 +227,19 @@ module id_module_pipeline #(
                 decoded.is_pc_op = 1;
                 decoded.rr_a = rs1;
                 decoded.rr_dst = rd;
+            end
+            7'b0001111: begin
+                case(funct3)
+                    3'b001: begin
+                        decoded.is_pc_op = 1;
+                        decoded.is_branch = 1;  
+                    end
+                    default: begin
+
+                    end
+
+                endcase
+
             end
             default: begin
             end

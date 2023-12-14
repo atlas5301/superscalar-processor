@@ -159,6 +159,7 @@ module exe_module_pipeline #(
 
 
     always_ff @(posedge clk) begin
+        i_cache_reset <= 1'b0;
         branch_prediction_en <= 1'b0;
         // current_status_exe_enable <= mask_exe;
         unpredicted_jump_entry_head <= head;
@@ -359,6 +360,10 @@ module exe_module_pipeline #(
                                     JALR: begin
                                         branch_taken = 1'b1;
                                     end
+                                    FENCE: begin
+                                        branch_taken = 1'b0;
+                                        i_cache_reset <= 1'b1;
+                                    end
                                     default: begin
                                         //next_pc = entries_o[addr_exe[i]].if_signals.PC+4;
                                     end
@@ -372,10 +377,7 @@ module exe_module_pipeline #(
                                 branch_prediction_bias <= entries_o[addr_exe[0]].id_signals.immediate;
                                 branch_prediction_taken <= branch_taken;
 
-                                if(branch_op == JAL) begin
-                                    unpredicted_jump_pc_base = entries_o[addr_exe[i]].if_signals.PC;
-                                    unpredicted_jump_pc_additional = entries_o[addr_exe[i]].id_signals.immediate;
-                                end else if(branch_op == JALR) begin
+                                if(branch_op == JALR) begin
                                     unpredicted_jump_pc_base = a;
                                     unpredicted_jump_pc_additional = entries_o[addr_exe[i]].id_signals.immediate;
                                 end else begin
