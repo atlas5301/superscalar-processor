@@ -430,12 +430,7 @@ module exe_module_pipeline #(
                                         mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
                                     end
                                     ECALL: begin
-                                        case(privilege_mode) // supervisor-rv/kernel/include/exception.h:16-11
-                                            mode_u: mcause <= 32'd8;
-                                            mode_s: mcause <= 32'd9;
-                                            mode_m: mcause <= 32'd11;
-                                            default:;
-                                        endcase
+                                        mcause <= 32'd8;
                                         mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
                                         trap_pc = {mtvec[31: 2], 2'b0};
                                         privilege_mode <= mode_m;

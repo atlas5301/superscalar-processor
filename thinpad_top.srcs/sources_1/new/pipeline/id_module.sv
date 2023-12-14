@@ -256,6 +256,7 @@ module id_module_pipeline #(
             7'b0001111: begin
                 case(funct3)
                     3'b001: begin
+                        decoded.branch_op = FENCE;
                         decoded.is_pc_op = 1;
                         decoded.is_branch = 1;  
                     end
