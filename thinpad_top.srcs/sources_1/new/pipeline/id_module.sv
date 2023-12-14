@@ -160,21 +160,39 @@ module id_module_pipeline #(
                 decoded.use_rs2 = 1;
             end
             7'b0000011: begin // LB, LH, LW, LBU, LHU
-                case(funct3)
-                    3'b000: decoded.mem_len = 1;
-                    3'b001: decoded.mem_len = 2;
-                    3'b010: decoded.mem_len = 4;
-                    3'b100: decoded.mem_len = 1;
-                    3'b101: decoded.mem_len = 2;
-                endcase
-                case(funct3)
-                    3'b100: decoded.mem_is_signed = 0;
-                    3'b101: decoded.mem_is_signed = 0;
-                    default: decoded.mem_is_signed = 1;
-                endcase
-                decoded.mem_en = 1;
-                decoded.rr_a = rs1;
-                decoded.rr_dst = rd;
+                if (imm == 32'h200BFF8) begin
+                    decoded.is_csr = 1;
+                    decoded.csr_addr = 12'h100;
+                    decoded.csr_op = SETI;
+                end else if (imm == 32'h200BFFC) begin
+                    decoded.is_csr = 1;
+                    decoded.csr_addr = 12'h101;
+                    decoded.csr_op = SETI;
+                end else if (imm == 32'h2004000) begin
+                    decoded.is_csr = 1;
+                    decoded.csr_addr = 12'h120;
+                    decoded.csr_op = SETI;
+                end else if (imm == 32'h2004004) begin
+                    decoded.is_csr = 1;
+                    decoded.csr_addr = 12'h121;
+                    decoded.csr_op = SETI;
+                end else begin
+                    case(funct3)
+                        3'b000: decoded.mem_len = 1;
+                        3'b001: decoded.mem_len = 2;
+                        3'b010: decoded.mem_len = 4;
+                        3'b100: decoded.mem_len = 1;
+                        3'b101: decoded.mem_len = 2;
+                    endcase
+                    case(funct3)
+                        3'b100: decoded.mem_is_signed = 0;
+                        3'b101: decoded.mem_is_signed = 0;
+                        default: decoded.mem_is_signed = 1;
+                    endcase
+                    decoded.mem_en = 1;
+                    decoded.rr_a = rs1;
+                    decoded.rr_dst = rd;
+                end
             end
             7'b0100011: begin // SB, SH, SW
                 case(funct3)

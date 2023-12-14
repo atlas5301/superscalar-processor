@@ -8,7 +8,7 @@ package signals;
 
     // Constants for cst_op
 
-    typedef enum logic [2:0] {NO_CSR, CSRRC, CSRRS, CSRRW, ECALL, EBREAK, MRET} csr_t;
+    typedef enum logic [3:0] {NO_CSR, CSRRC, CSRRS, CSRRW, ECALL, EBREAK, MRET, SETI, TIME_OUT} csr_t;
 
     typedef enum logic [1:0] {
         mode_u = 2'b00,

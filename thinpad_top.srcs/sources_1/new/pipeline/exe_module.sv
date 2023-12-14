@@ -11,7 +11,8 @@ module exe_module_pipeline #(
     parameter int PHYSICAL_REGISTERS_ADDR_LEN = 6,
     parameter int NUM_PHYSICAL_REGISTERS = 64,
     parameter int CACHE_CYCLES = 2,
-    parameter int SHIFT_WIDTH=5
+    parameter int SHIFT_WIDTH = 5,
+    parameter int TICK_PER_CLK = 2048
 ) (
     input wire clk,
     input wire reset,
@@ -164,6 +165,17 @@ module exe_module_pipeline #(
     csr_t csr_op;
     logic [CSR_ADDR_LEN: 0] csr_addr;
 
+    logic [REG_DATA_WIDTH-1:0] mtime_low;// 0X100, Machine Time.
+    logic [REG_DATA_WIDTH-1:0] mtime_high;
+                                         // 0X101, Machine Time.
+    logic [REG_DATA_WIDTH-1:0] mtimecmp_low;
+                                        // 0X120, Machine Time Cmp.
+    logic [REG_DATA_WIDTH-1:0] mtimecmp_high;
+                                        // 0X121, Machine Time Cmp.
+
+    logic [REG_DATA_WIDTH-1:0] new_mtime_low;
+    logic [REG_DATA_WIDTH-1:0] new_mtime_high;
+
     logic [REG_DATA_WIDTH-1:0] mstatus;  // 0X300, Machine status register.
     logic [REG_DATA_WIDTH-1:0] mie;      // 0X304, Machine interrupt-enable register.
     logic [REG_DATA_WIDTH-1:0] mtvec;    // 0X305, Machine trap-handler base address.
@@ -175,6 +187,11 @@ module exe_module_pipeline #(
     logic [REG_DATA_WIDTH-1:0] new_csr_reg;
 
     logic [REG_DATA_WIDTH-1:0] trap_pc;
+
+    logic [16:0] cnt;
+
+    logic mtie;
+    logic mtip;
 
     always_ff @(posedge clk) begin
         i_cache_reset <= 1'b0;
@@ -216,7 +233,8 @@ module exe_module_pipeline #(
             mcause <= 32'b0;
             mip <= 32'b0;
             new_csr_reg <= 32'b0;
-            trap_pc <= 0;
+            trap_pc <= 'b0;
+            cnt <= 16'b0;
 
             wr_en_exe <= 'b0;
             exe_wr_enable <= 'b0;
@@ -228,6 +246,30 @@ module exe_module_pipeline #(
             end
 
         end else begin
+
+            if (cnt == TICK_PER_CLK) begin
+                cnt <= 0;
+                new_mtime_low = mtime_low + 1;
+                if (new_mtime_low == 0) begin
+                    new_mtime_high = mtime_high + 1;
+                end else begin
+                    new_mtime_high = mtime_high;
+                end
+                mtime_low <= new_mtime_low;
+                mtime_high <= new_mtime_high;
+            end
+            else begin
+                cnt <= cnt + 1;
+            end
+
+            if (mtime_high > mtimecmp_high || (mtime_high == mtimecmp_high && mtime_low > mtimecmp_low)) begin
+                mip[7] <= 1;
+                mtip = 1;
+            end else begin
+                mip[7] <= 0;
+                mtip = 0;
+            end
+            mtie = mie[7];
 
             wr_en_exe <= 'b0;
             exe_wr_enable <= 'b0;  // ensure no additional writes
@@ -339,6 +381,12 @@ module exe_module_pipeline #(
                             csr_op = entries_o[addr_exe[i]].id_signals.csr_op;
                             csr_addr = entries_o[addr_exe[i]].id_signals.csr_addr;
 
+                            if (mtip && mtie && privilege_mode == mode_u) begin
+                                csr_addr = 0;
+                                is_csr = 1;
+                                csr_op = TIME_OUT;
+                            end
+
                             if (is_csr) begin 
                                 case(csr_addr)
                                     12'h300: b = mstatus;
@@ -348,6 +396,10 @@ module exe_module_pipeline #(
                                     12'h341: b = mepc;
                                     12'h342: b = mcause;
                                     12'h344: b = mip;
+                                    12'h100: b = mtime_low;
+                                    12'h101: b = mtime_high;
+                                    12'h120: b = mtimecmp_low;
+                                    12'h121: b = mtimecmp_high;
                                     default: b = 0;
                                 endcase
 
@@ -365,6 +417,10 @@ module exe_module_pipeline #(
                                     CSRRW: begin
                                         new_csr_reg = a;
                                         result = b;
+                                    end
+                                    SETI: begin
+                                        new_csr_reg = entries_o[addr_exe[i]].id_signals.immediate;
+                                        result = 0;
                                     end
                                     EBREAK: begin
                                         mcause <= 32'd3; // supervisor-rv/kernel/include/exception.h:11
@@ -390,6 +446,13 @@ module exe_module_pipeline #(
                                         privilege_mode <= privilege_mode_t'(mstatus[12:11]);
                                         mstatus <= {mstatus[31: 13], 2'b0, mstatus[10: 0]};
                                     end
+                                    TIME_OUT: begin
+                                        mcause <= 32'h80000007;
+                                        mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
+                                        trap_pc = {mtvec[31: 2], 2'b0};
+                                        privilege_mode <= mode_m;
+                                        mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
+                                    end
                                 endcase
 
                                 case(csr_addr)
@@ -400,6 +463,10 @@ module exe_module_pipeline #(
                                     12'h341: mepc <= new_csr_reg;
                                     12'h342: mcause <= new_csr_reg;
                                     12'h344: mip <= new_csr_reg;
+                                    12'h100: mtime_low <= new_csr_reg;
+                                    12'h101: mtime_high <= new_csr_reg;
+                                    12'h120: mtimecmp_low <= new_csr_reg;
+                                    12'h121: mtimecmp_high <= new_csr_reg;
                                     default: ;
                                 endcase
                             end
