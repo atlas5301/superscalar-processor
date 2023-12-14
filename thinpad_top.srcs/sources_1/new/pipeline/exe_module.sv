@@ -346,6 +346,7 @@ module exe_module_pipeline #(
                                     12'h305: b = mtvec;
                                     12'h340: b = mscratch;
                                     12'h341: b = mepc;
+                                    12'h342: b = mcause;
                                     12'h344: b = mip;
                                     default: b = 0;
                                 endcase
@@ -397,6 +398,7 @@ module exe_module_pipeline #(
                                     12'h305: mtvec <= new_csr_reg;
                                     12'h340: mscratch <= new_csr_reg;
                                     12'h341: mepc <= new_csr_reg;
+                                    12'h342: mcause <= new_csr_reg;
                                     12'h344: mip <= new_csr_reg;
                                     default: ;
                                 endcase
