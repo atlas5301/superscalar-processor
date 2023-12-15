@@ -381,11 +381,11 @@ module exe_module_pipeline #(
                             csr_op = entries_o[addr_exe[i]].id_signals.csr_op;
                             csr_addr = entries_o[addr_exe[i]].id_signals.csr_addr;
 
-                            if (mtip && mtie && privilege_mode == mode_u) begin
-                                csr_addr = 0;
-                                is_csr = 1;
-                                csr_op = TIME_OUT;
-                            end
+                            // if (mtip && mtie && privilege_mode == mode_u) begin
+                            //     csr_addr = 0;
+                            //     is_csr = 1;
+                            //     csr_op = TIME_OUT;
+                            // end
 
                             if (is_csr) begin 
                                 case(csr_addr)
@@ -423,6 +423,7 @@ module exe_module_pipeline #(
                                         result = 0;
                                     end
                                     EBREAK: begin
+                                        $display("ebreak");
                                         mcause <= 32'd3; // supervisor-rv/kernel/include/exception.h:11
                                         mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
                                         trap_pc = {mtvec[31: 2], 2'b0};
@@ -430,6 +431,7 @@ module exe_module_pipeline #(
                                         mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
                                     end
                                     ECALL: begin
+                                        $display("ecall");
                                         mcause <= 32'd8;
                                         mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
                                         trap_pc = {mtvec[31: 2], 2'b0};

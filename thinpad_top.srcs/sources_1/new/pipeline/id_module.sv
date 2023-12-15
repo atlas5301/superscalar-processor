@@ -302,30 +302,33 @@ module id_module_pipeline #(
                     end
                     3'b000: begin
                         case(csr_addr)
-                        12'b00000000000: begin
+                        12'b000000000000: begin
                             $display("ecall");
                             decoded.is_branch = 1;
                             decoded.branch_op = TRAP;
                             decoded.csr_op = ECALL;
                         end
-                        12'b00000000001: begin
-                            $display("ebreak");
+                        12'b000000000001: begin
                             decoded.is_branch = 1;
                             decoded.branch_op = TRAP;
                             decoded.csr_op = EBREAK;
                         end
-                        12'b00110000001: begin
+                        12'b001100000010: begin
                             $display("mret");
                             decoded.is_branch = 1;
                             decoded.branch_op = TRAP;
                             decoded.csr_op = MRET;
                         end
-                        default: decoded.csr_op = NO_CSR;
+                        default: begin
+                            decoded.csr_op = NO_CSR;
+                        end
                         endcase
                     end
-                    default: decoded.csr_op = NO_CSR;
+                    default: begin
+                        decoded.csr_op = NO_CSR;
+                    end
                 endcase
-                $display("rr_dst: %d, rr_a: %d, is_csr: %d csr_addr: %h", rd, rs1, decoded.is_csr, csr_addr);
+                // $display("rr_dst: %d, rr_a: %d, is_csr: %d csr_addr: %h", rd, rs1, decoded.is_csr, csr_addr);
             end
             default: begin
             end
