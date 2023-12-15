@@ -195,6 +195,33 @@ module tb;
   assign mcause = dut.exe_module_pipeline_inst.mcause;
   assign mip = dut.exe_module_pipeline_inst.mip;
 
+  localparam REG_DATA_WIDTH = 32;
+
+  logic [REG_DATA_WIDTH-1:0] mtime_low;// 0X100, Machine Time.
+  logic [REG_DATA_WIDTH-1:0] mtime_high;
+                                        // 0X101, Machine Time.
+  logic [REG_DATA_WIDTH-1:0] mtimecmp_low;
+                                      // 0X120, Machine Time Cmp.
+  logic [REG_DATA_WIDTH-1:0] mtimecmp_high;
+                                      // 0X121, Machine Time Cmp.
+
+  logic [REG_DATA_WIDTH-1:0] new_mtime_low;
+  logic [REG_DATA_WIDTH-1:0] new_mtime_high;
+
+  logic [1:0] privilege_mode;
+
+  logic [16:0] cnt;
+
+  assign mtime_low = dut.exe_module_pipeline_inst.mtime_low;
+  assign mtime_high = dut.exe_module_pipeline_inst.mtime_high;
+  assign mtimecmp_low = dut.exe_module_pipeline_inst.mtimecmp_low;
+  assign mtimecmp_high = dut.exe_module_pipeline_inst.mtimecmp_high;
+  assign new_mtime_low = dut.exe_module_pipeline_inst.new_mtime_low;
+  assign new_mtime_high = dut.exe_module_pipeline_inst.new_mtime_high;
+  assign cnt = dut.exe_module_pipeline_inst.cnt;
+
+  assign privilege_mode = dut.exe_module_pipeline_inst.privilege_mode;
+
   logic [0:0] test_if_enable;
   logic [0:0][3:0] test_if_ports_available;
   import signals::*;

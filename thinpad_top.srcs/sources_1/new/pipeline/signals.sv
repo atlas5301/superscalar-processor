@@ -8,7 +8,7 @@ package signals;
 
     // Constants for cst_op
 
-    typedef enum logic [3:0] {NO_CSR, CSRRC, CSRRS, CSRRW, ECALL, EBREAK, MRET, SETI, TIME_OUT} csr_t;
+    typedef enum logic [3:0] {NO_CSR, CSRRC, CSRRS, CSRRW, ECALL, EBREAK, MRET, SETI, GET, TIME_OUT} csr_t;
 
     typedef enum logic [1:0] {
         mode_u = 2'b00,
@@ -66,6 +66,7 @@ package signals;
     typedef struct {
         logic [31:0] rf_wdata_exe;  //in load/store instructions, will be used to store final addr
         logic [31:0] final_rf_rdata_b;
+        logic mem_enable;
     } exe_signals_t;
 
     // MEM Stage

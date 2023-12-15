@@ -448,7 +448,7 @@ module mem_module_pipeline #(
 
                     for (int i=0;i<MEM_PORT;i++) begin
                         if (is_enable[i]) begin
-                            if (entries_o[addresses[i]].id_signals.mem_en) begin
+                            if (entries_o[addresses[i]].exe_signals.mem_enable) begin
                                 if (~bypass_mem) begin
                                     access_mem = 1'b1;
                                 end

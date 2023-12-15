@@ -160,39 +160,24 @@ module id_module_pipeline #(
                 decoded.use_rs2 = 1;
             end
             7'b0000011: begin // LB, LH, LW, LBU, LHU
-                if (imm == 32'h200BFF8) begin
-                    decoded.is_csr = 1;
-                    decoded.csr_addr = 12'h100;
-                    decoded.csr_op = SETI;
-                end else if (imm == 32'h200BFFC) begin
-                    decoded.is_csr = 1;
-                    decoded.csr_addr = 12'h101;
-                    decoded.csr_op = SETI;
-                end else if (imm == 32'h2004000) begin
-                    decoded.is_csr = 1;
-                    decoded.csr_addr = 12'h120;
-                    decoded.csr_op = SETI;
-                end else if (imm == 32'h2004004) begin
-                    decoded.is_csr = 1;
-                    decoded.csr_addr = 12'h121;
-                    decoded.csr_op = SETI;
-                end else begin
-                    case(funct3)
-                        3'b000: decoded.mem_len = 1;
-                        3'b001: decoded.mem_len = 2;
-                        3'b010: decoded.mem_len = 4;
-                        3'b100: decoded.mem_len = 1;
-                        3'b101: decoded.mem_len = 2;
-                    endcase
-                    case(funct3)
-                        3'b100: decoded.mem_is_signed = 0;
-                        3'b101: decoded.mem_is_signed = 0;
-                        default: decoded.mem_is_signed = 1;
-                    endcase
-                    decoded.mem_en = 1;
-                    decoded.rr_a = rs1;
-                    decoded.rr_dst = rd;
-                end
+                case(funct3)
+                    3'b000: decoded.mem_len = 1;
+                    3'b001: decoded.mem_len = 2;
+                    3'b010: decoded.mem_len = 4;
+                    3'b100: decoded.mem_len = 1;
+                    3'b101: decoded.mem_len = 2;
+                endcase
+                case(funct3)
+                    3'b100: decoded.mem_is_signed = 0;
+                    3'b101: decoded.mem_is_signed = 0;
+                    default: decoded.mem_is_signed = 1;
+                endcase
+                decoded.is_pc_op = 1;
+                decoded.is_branch = 1;
+                decoded.branch_op = TRAP;
+                decoded.mem_en = 1;
+                decoded.rr_a = rs1;
+                decoded.rr_dst = rd;
             end
             7'b0100011: begin // SB, SH, SW
                 case(funct3)
@@ -200,6 +185,9 @@ module id_module_pipeline #(
                     3'b001: decoded.mem_len = 2;
                     3'b010: decoded.mem_len = 4;
                 endcase
+                decoded.is_pc_op = 1;
+                decoded.is_branch = 1;
+                decoded.branch_op = TRAP;
                 decoded.mem_is_signed = 1;
                 decoded.mem_en = 1;
                 decoded.mem_write = 1;
@@ -284,6 +272,9 @@ module id_module_pipeline #(
                 decoded.rr_dst = rd;
                 decoded.rr_a = rs1;
                 decoded.is_csr = 1;
+                decoded.is_pc_op = 1;
+                decoded.is_branch = 1;
+                decoded.branch_op = TRAP;
                 case(csr_funct3)
                     3'b011: begin
                         $display("csrrc");
@@ -304,19 +295,13 @@ module id_module_pipeline #(
                         case(csr_addr)
                         12'b000000000000: begin
                             $display("ecall");
-                            decoded.is_branch = 1;
-                            decoded.branch_op = TRAP;
                             decoded.csr_op = ECALL;
                         end
                         12'b000000000001: begin
-                            decoded.is_branch = 1;
-                            decoded.branch_op = TRAP;
                             decoded.csr_op = EBREAK;
                         end
                         12'b001100000010: begin
                             $display("mret");
-                            decoded.is_branch = 1;
-                            decoded.branch_op = TRAP;
                             decoded.csr_op = MRET;
                         end
                         default: begin

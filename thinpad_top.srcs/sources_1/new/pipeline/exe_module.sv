@@ -193,12 +193,18 @@ module exe_module_pipeline #(
     logic mtie;
     logic mtip;
 
+    logic set_privilege_mode;
+
+    logic [EXE_PORT-1:0] mem_en;
+    logic unpredicted_jump_men_en;
+
     always_ff @(posedge clk) begin
         i_cache_reset <= 1'b0;
         branch_prediction_en <= 1'b0;
         // current_status_exe_enable <= mask_exe;
         unpredicted_jump_entry_head <= head;
         unpredicted_jump_entry_addr_tmp <= exe_ports_available[0];
+        unpredicted_jump_men_en <= 'b0;
 
         for (int i=0; i< CACHE_CYCLES-1; i++) begin
             for (int j=0; j< EXE_WRITE_PORTS; j++) begin
@@ -225,7 +231,7 @@ module exe_module_pipeline #(
             unpredicted_jump <= 'b0;
             unpredicted_jump_release <= 1'b0;
             
-            mstatus <= 32'b0;
+            mstatus <= 32'hFFFF_FFFF;
             mie <= 32'b0;
             mtvec <= 32'b0;
             mscratch <= 32'b0;
@@ -235,9 +241,23 @@ module exe_module_pipeline #(
             new_csr_reg <= 32'b0;
             trap_pc <= 'b0;
             cnt <= 16'b0;
+            mem_en = 'b0;
+            unpredicted_jump_men_en <= 'b0;
 
             wr_en_exe <= 'b0;
             exe_wr_enable <= 'b0;
+
+            mtime_low <= 0;// 0X100, Machine Time.
+            mtime_high  <= 0;
+                                         // 0X101, Machine Time.
+            mtimecmp_low <= 32'hFFFF_FFFF;
+                                        // 0X120, Machine Time Cmp.
+            mtimecmp_high <= 32'hFFFF_FFFF;
+                                        // 0X121, Machine Time Cmp.
+
+            new_mtime_low <= 0;
+            new_mtime_high <= 0;
+            set_privilege_mode <= 'b0;
 
             for (int i=0; i< CACHE_CYCLES; i++) begin
                 for (int j=0; j< EXE_WRITE_PORTS; j++) begin
@@ -342,6 +362,9 @@ module exe_module_pipeline #(
                                 b = entries_o[addr_exe[i]].id_signals.immediate;
                             end
 
+                            debug_PC <= entries_o[addr_exe[i]].if_signals.PC; 
+                            branch_op = entries_o[addr_exe[i]].id_signals.branch_op;
+
                             case (entries_o[addr_exe[i]].id_signals.alu_op)
                                 ADD: result = a + b;
                                 SUB: result = a - b;
@@ -381,11 +404,59 @@ module exe_module_pipeline #(
                             csr_op = entries_o[addr_exe[i]].id_signals.csr_op;
                             csr_addr = entries_o[addr_exe[i]].id_signals.csr_addr;
 
-                            // if (mtip && mtie && privilege_mode == mode_u) begin
-                            //     csr_addr = 0;
-                            //     is_csr = 1;
-                            //     csr_op = TIME_OUT;
-                            // end
+                            // $display("%x %x", mtip, mtie);
+
+                            mem_en[i] = entries_o[addr_exe[i]].id_signals.mem_en;
+                            if (mem_en[i]) begin
+                                trap_pc = entries_o[addr_exe[i]].if_signals.PC + 4;
+                                case(result)
+                                    32'h200BFF8:begin
+                                        is_csr = 1;
+                                        mem_en[i] = 0;
+                                        csr_addr = 12'h100;
+                                        unpredicted_jump_men_en <= 1'b1;
+                                    end
+                                    32'h200BFFC:begin
+                                        is_csr = 1;
+                                        mem_en[i] = 0;
+                                        csr_addr = 12'h101;
+                                        unpredicted_jump_men_en <= 1'b1;
+                                    end
+                                    32'h2004000:begin
+                                        is_csr = 1;
+                                        mem_en[i] = 0;
+                                        csr_addr = 12'h120;
+                                        unpredicted_jump_men_en <= 1'b1;
+                                    end
+                                    32'h2004004:begin
+                                        is_csr = 1;
+                                        mem_en[i] = 0;
+                                        csr_addr = 12'h121;
+                                        unpredicted_jump_men_en <= 1'b1;
+                                    end
+                                    default: begin
+                                        is_csr = 0;
+                                        mem_en[i] = 1;
+                                    end
+                                endcase
+                                if (entries_o[addr_exe[i]].id_signals.mem_write) begin
+                                    csr_op = SETI;
+                                end else begin
+                                    csr_op = GET;
+                                end
+                            end
+
+                            if (mtip && mtie ) begin
+                                $display("ready to time out!");
+                                $display("privilege_mode: %d", privilege_mode);
+                                if (privilege_mode == mode_u) begin
+                                    $display("time out!");
+                                    csr_addr = 0;
+                                    is_csr = 1;
+                                    branch_op = TRAP;
+                                    csr_op = TIME_OUT;
+                                end
+                            end
 
                             if (is_csr) begin 
                                 case(csr_addr)
@@ -407,43 +478,58 @@ module exe_module_pipeline #(
                                     NO_CSR: begin
                                     end
                                     CSRRC: begin
+                                        $display("0x%h csrrc get: %h %h set: %h", entries_o[addr_exe[i]].if_signals.PC, csr_addr, b, a);
                                         new_csr_reg = b & (~a);
                                         result = b;
+                                        trap_pc = entries_o[addr_exe[i]].if_signals.PC + 4;
                                     end
                                     CSRRS: begin
+                                        $display("0x%h csrrs get: %h %h set: %h", entries_o[addr_exe[i]].if_signals.PC, csr_addr, b, a);
                                         new_csr_reg = b | a;
                                         result = b;
+                                        trap_pc = entries_o[addr_exe[i]].if_signals.PC + 4;
                                     end
                                     CSRRW: begin
+                                        $display("0x%h csrrw get: %h %h set: %h", entries_o[addr_exe[i]].if_signals.PC, csr_addr, b, a);
                                         new_csr_reg = a;
                                         result = b;
+                                        trap_pc = entries_o[addr_exe[i]].if_signals.PC + 4;
                                     end
                                     SETI: begin
-                                        new_csr_reg = entries_o[addr_exe[i]].id_signals.immediate;
+                                        new_csr_reg = tmpb;
                                         result = 0;
+                                        trap_pc = entries_o[addr_exe[i]].if_signals.PC + 4;
+                                    end
+                                    GET: begin
+                                        new_csr_reg = b;
+                                        result = b;
+                                        trap_pc = entries_o[addr_exe[i]].if_signals.PC + 4;
                                     end
                                     EBREAK: begin
-                                        $display("ebreak");
+                                        $display("0x%h ebreak", entries_o[addr_exe[i]].if_signals.PC);
                                         mcause <= 32'd3; // supervisor-rv/kernel/include/exception.h:11
-                                        mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
+                                        mepc <= entries_o[addr_exe[i]].if_signals.PC;
                                         trap_pc = {mtvec[31: 2], 2'b0};
                                         privilege_mode <= mode_m;
                                         mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
                                     end
                                     ECALL: begin
-                                        $display("ecall");
+                                        $display("0x%h  ecall", entries_o[addr_exe[i]].if_signals.PC);
                                         mcause <= 32'd8;
-                                        mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
+                                        $display("set mepc: 0x%h", entries_o[addr_exe[i]].if_signals.PC + 4);
+                                        mepc <= entries_o[addr_exe[i]].if_signals.PC;
                                         trap_pc = {mtvec[31: 2], 2'b0};
                                         privilege_mode <= mode_m;
                                         mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
                                     end
                                     MRET: begin 
+                                        $display("return to: 0x%h", mepc);
                                         trap_pc = mepc;
                                         privilege_mode <= privilege_mode_t'(mstatus[12:11]);
                                         mstatus <= {mstatus[31: 13], 2'b0, mstatus[10: 0]};
                                     end
                                     TIME_OUT: begin
+                                        $display("csr solve time_out");
                                         mcause <= 32'h80000007;
                                         mepc <= entries_o[addr_exe[i]].if_signals.PC + 4;
                                         trap_pc = {mtvec[31: 2], 2'b0};
@@ -451,6 +537,8 @@ module exe_module_pipeline #(
                                         mstatus <= {mstatus[31: 13], privilege_mode, mstatus[10: 0]};
                                     end
                                 endcase
+
+                                $display("set %h", csr_addr);
 
                                 case(csr_addr)
                                     12'h300: mstatus <= new_csr_reg;
@@ -460,7 +548,9 @@ module exe_module_pipeline #(
                                     12'h341: mepc <= new_csr_reg;
                                     12'h342: mcause <= new_csr_reg;
                                     12'h344: mip <= new_csr_reg;
-                                    12'h100: mtime_low <= new_csr_reg;
+                                    12'h100: begin
+                                        mtime_low <= new_csr_reg;
+                                    end
                                     12'h101: mtime_high <= new_csr_reg;
                                     12'h120: mtimecmp_low <= new_csr_reg;
                                     12'h121: mtimecmp_high <= new_csr_reg;
@@ -469,23 +559,22 @@ module exe_module_pipeline #(
                             end
 
                             exe_entries_i[addr_exe[i]].rf_wdata_exe <= result;   // here, the result should be final, otherwise may cause problems
+                            exe_entries_i[addr_exe[i]].mem_enable <= mem_en[i];
                             exe_wr_physical_addr[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
                             wr_addr_exe[i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
                             wr_data_exe[i] <= result;
                             wr_addr_exe_cache[0][i] <= entries_o[addr_exe[i]].id_signals.dst_rf_tag;
                             wr_data_exe_cache[0][i] <= result;
-                            if (~entries_o[addr_exe[i]].id_signals.mem_en) begin
+
+                            if (!mem_en[i]) begin
                                 wr_en_exe[i] <= 1'b1;
                                 exe_wr_enable[i] <= 1'b1;
                                 wr_en_exe_cache[0][i] <= 1'b1;
-                                current_status_exe[addr_exe[i]] <= WB;
                             end
                             //$display("exe_module: %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // if ((entries_o[addr_exe[i]].if_signals.PC == 32'h80000074)) begin
                             //$display("flag, %h %h %h %h", a, b, entries_o[addr_exe[i]].if_signals.PC, result);
                         // end
-                            debug_PC <= entries_o[addr_exe[i]].if_signals.PC; 
-                            branch_op = entries_o[addr_exe[i]].id_signals.branch_op;
 
                             if (is_branch && i == 0) begin
                                 // next_pc = entries_o[addr_exe[i]].if_signals.PC;
@@ -546,9 +635,9 @@ module exe_module_pipeline #(
                                     unpredicted_jump_pc_additional = branch_taken ? entries_o[addr_exe[i]].id_signals.immediate : 4;
                                 end
 
-                                if (entries_o[addr_exe[i]].id_signals.is_pc_op
+                                if ((entries_o[addr_exe[i]].id_signals.is_pc_op
                                     | branch_taken != entries_o[addr_exe[i]].if_signals.branch_taken
-                                    | branch_op == TRAP
+                                    | branch_op == TRAP)
                                     ) begin
                                     unpredicted_jump <= 1'b1;
                                     // unpredicted_jump_entry_addr <= addr_exe[i];
